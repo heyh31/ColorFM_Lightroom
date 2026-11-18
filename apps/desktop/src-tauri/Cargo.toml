@@ -1,0 +1,16 @@
+[package]
+name = "colorfm-desktop"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Detach from the root workspace: Tauri pins its own dependency versions and
+# mixing them with colorfm-core / colorfm-engine causes resolver conflicts.
+[workspace]

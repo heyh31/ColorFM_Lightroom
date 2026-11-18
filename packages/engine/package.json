@@ -1,0 +1,12 @@
+{
+  "name": "@colorfm/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local HTTP service: job queue, params cache, Lightroom sessions.",
+  "main": "./dist/main.js",
+  "dependencies": {
+    "@colorfm/core": "0.1.0"
+  },
+  "license": "CC-BY-NC-SA-4.0"
+}

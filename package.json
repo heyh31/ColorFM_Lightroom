@@ -1,0 +1,51 @@
+{
+  "name": "colorfm-lightroom",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ColorFM colour transfer: model inference, 3D LUT baking and 16-bit TIFF rendering, plus the local HTTP engine that Lightroom talks to.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "serve": "node --enable-source-maps packages/engine/dist/main.js",
+    "dev:serve": "tsx packages/engine/src/main.ts",
+    "bake-lut": "node --enable-source-maps packages/core/dist/bin/bake-lut.js",
+    "colorfm": "node --enable-source-maps packages/core/dist/bin/colorfm.js",
+    "typecheck": "tsc -b && tsc -p packages/core/tsconfig.test.json && tsc -p packages/engine/tsconfig.test.json && npm --prefix apps/desktop run typecheck",
+    "test": "npm run typecheck && vitest run",
+    "test:unit": "npm run typecheck && vitest run --exclude '**/differential/**'",
+    "test:differential": "npm run typecheck && vitest run packages/*/test/differential",
+    "reference:build": "cargo build --release --offline --manifest-path tools/reference/Cargo.toml",
+    "format": "prettier --write \"packages/**/*.ts\" \"*.json\" \"packages/*/*.json\"",
+    "format:check": "prettier --check \"packages/**/*.ts\"",
+    "desktop:dev": "npm --prefix apps/desktop run tauri -- dev",
+    "desktop:build": "npm --prefix apps/desktop run tauri -- build",
+    "desktop:web": "npm --prefix apps/desktop run dev",
+    "model:link": "node scripts/link-model.mjs",
+    "bench:core": "tsx tools/bench/core.mts",
+    "bench:engine": "tsx tools/bench/engine.mts --reps 3"
+  },
+  "devDependencies": {
+    "@types/luaparse": "^0.2.13",
+    "@types/node": "^22.10.2",
+    "luaparse": "^0.3.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  },
+  "optionalDependencies": {
+    "onnxruntime-node": "^1.20.1"
+  },
+  "license": "CC-BY-NC-SA-4.0"
+}

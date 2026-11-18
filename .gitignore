@@ -1,0 +1,157 @@
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+
+# Hoisted by npm workspaces; a nested copy can also appear under apps/desktop.
+node_modules/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+
+# `package-lock.json` is committed on purpose: the workspace pins exact versions
+# and CI must install the same tree.
+
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+
+# Each package and the desktop frontend compile into a sibling `dist/`.
+dist/
+*.tsbuildinfo
+
+# Rust build trees: the Tauri shell and the differential harness both use one.
+target/
+
+# Tauri regenerates the capability schemas on every build.
+apps/desktop/src-tauri/gen/
+
+# Leftover slot from the Rust sidecar layout: if a binary is ever dropped here it
+# is 10 MB+ of build output that must not reach the history.
+apps/desktop/src-tauri/binaries/
+
+# Vite keeps its dependency cache inside the project (see apps/desktop/vite.config.ts).
+.vite-cache/
+.vite/
+
+# ---------------------------------------------------------------------------
+# Caches and test artifacts
+# ---------------------------------------------------------------------------
+
+coverage/
+test-output/
+tmp/
+*.log
+npm-debug.log*
+yarn-error.log*
+*.tgz
+.eslintcache
+*.orig
+*.rej
+
+# Vitest writes a timestamped copy of the config when the config changes.
+vitest.config.ts.timestamp-*
+*.timestamp-*.mjs
+
+__pycache__/
+*.py[cod]
+
+# The reference harness is a local test fixture; its lock file is regenerated on
+# `npm run reference:build` and is not part of the shipped graph.
+tools/reference/Cargo.lock
+
+# ---------------------------------------------------------------------------
+# Local run state
+# ---------------------------------------------------------------------------
+
+# A throwaway engine home/library, for when COLORFM_HOME or COLORFM_LIBRARY
+# points at the checkout instead of ~/Library/Application Support.
+.colorfm/
+engine.json
+engine.lock
+
+# The checkpoint is 118 MB and is linked, not stored: `npm run model:link`
+# points models/colorfm_l.onnx at the file in the reference checkout.
+models/*.onnx
+
+# Agent session notes for this workspace; local to the machine.
+.workbuddy/
+.codex/
+.
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+
+# Usually carries `//registry/:_authToken=…`; commit a token-free copy if the
+# team needs to share a mirror.
+.npmrc
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# ---------------------------------------------------------------------------
+# Coding agents
+# ---------------------------------------------------------------------------
+# Each tool keeps its own local state: session transcripts, caches, per-machine
+# settings. None of it is part of the build, and a checkout should not change
+# because someone else uses a different agent.
+#
+# Shared instructions do belong in the repository — commit `AGENTS.md` or
+# `CLAUDE.md` at the root rather than un-ignoring a tool's own directory.
+
+.workbuddy/
+.claude/
+.cursor/
+.windsurf/
+.continue/
+.codex/
+.gemini/
+.zed/
+.crush/
+.aider*
+.openhands/
+junie/
+
+# Machine-local instruction overrides; the shared files are kept.
+CLAUDE.local.md
+AGENTS.local.md
+.copilot/
+
+# ---------------------------------------------------------------------------
+# Other package managers
+# ---------------------------------------------------------------------------
+# npm is the one this repository uses (`package-lock.json` is committed). These
+# appear when someone reaches for a different tool; they must not be committed
+# alongside it.
+
+.pnpm-store/
+.pnpm-debug.log
+bun.lockb
+bun.lock
+.yarn/cache/
+.yarn/install-state.gz
+.venv/
+venv/
