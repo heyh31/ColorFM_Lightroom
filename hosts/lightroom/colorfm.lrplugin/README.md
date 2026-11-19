@@ -7,7 +7,7 @@ The Lightroom half of the ColorFM pipeline. It exports the selected photo as a
 the Tauri window, waits, then imports the rendered TIFF as a new catalogue photo
 stacked below the original. The original photo is never modified.
 
-The plug-in performs **no colour work and touches no pixels** — that boundary is
+The plug-in performs **no color work and touches no pixels** — that boundary is
 deliberate.
 
 ## Menu
@@ -106,9 +106,9 @@ Resolution order:
 
 1. `ColorFM：设置桌面应用路径…` (stored in Lightroom plug-in preferences)
 2. a source checkout: the plug-in walks up from its own location and looks for
-   `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM.app`, then
+   `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app`, then
    `apps/desktop/src-tauri/target/release/colorfm-desktop`
-3. `open -a ColorFM` (i.e. an app in `/Applications`)
+3. `open -a ColorFM-LR` (i.e. an app in `/Applications`)
 
 The checkout branch is what makes a working copy usable without configuring
 anything — after `npm run desktop:build` the plug-in finds the bundle on its

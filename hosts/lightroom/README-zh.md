@@ -30,10 +30,10 @@ Lightroom Classic 侧的 Lua 插件（`colorfm.lrplugin`）。它负责三件事
 | **文件 > 增效工具额外信息**（`LrExportMenuItems`） | 4 条正式命令 |
 | **图库 > 增效工具额外功能**（`LrLibraryMenuItems`） | 4 条正式命令 + 3 条 SDK 自测 |
 
-- `ColorFM：处理当前照片…`（`MenuProcess.lua`）
-- `ColorFM：继续未完成会话…`（`MenuResume.lua`）
-- `ColorFM：检查引擎状态`（`MenuStatus.lua`）
-- `ColorFM：设置桌面应用路径…`（`MenuSetApp.lua`，结果存 `LrPrefs` 的 `colorfmAppPath`）
+- `ColorFM-LR：处理当前照片…`（`MenuProcess.lua`）
+- `ColorFM-LR：继续未完成会话…`（`MenuResume.lua`）
+- `ColorFM-LR：检查引擎状态`（`MenuStatus.lua`）
+- `ColorFM-LR：设置桌面应用路径…`（`MenuSetApp.lua`，结果存 `LrPrefs` 的 `colorfmAppPath`）
 
 ## 文件
 
@@ -52,7 +52,7 @@ Lightroom Classic 侧的 Lua 插件（`colorfm.lrplugin`）。它负责三件事
 
 ```bash
 ln -s "$PWD/hosts/lightroom/colorfm.lrplugin" \
-      ~/Library/Application\ Support/Adobe/Lightroom/Modules/ColorFM.lrplugin
+      ~/Library/Application\ Support/Adobe/Lightroom/Modules/colorfm.lrplugin
 ```
 
 或在 Lightroom 里 **文件 > 增效工具管理器 > 添加**，选中 `colorfm.lrplugin` 目录。

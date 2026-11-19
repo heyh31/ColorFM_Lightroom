@@ -99,9 +99,9 @@ Lightroom 在等待期间显示可取消的进度面板；取消会同时取消�
 
 1. `ColorFM：设置桌面应用路径…`（存在 Lightroom 插件偏好里）
 2. 源码工作副本：插件从自身位置逐级向上找
-   `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM.app`，再找
+   `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app`，再找
    `apps/desktop/src-tauri/target/release/colorfm-desktop`
-3. `open -a ColorFM`（即 `/Applications` 里的 app）
+3. `open -a ColorFM-LR`（即 `/Applications` 里的 app）
 
 第 2 条让工作副本不需要任何配置就能用——`npm run desktop:build` 之后，插件自己就能找到
 那个 bundle。如果引擎已经在跑（应用开着，或者你自己起的），插件不会去启动任何东西。

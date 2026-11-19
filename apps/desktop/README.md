@@ -20,7 +20,7 @@ src/                      # frontend (React + TypeScript)
   lib/engine.ts           # engine HTTP client and error-code translation
   lib/i18n.ts             # zh/en dictionaries (flat keys + {placeholders}); a missing key shows itself
   lib/settings.ts         # settings type plus read/write through Rust
-  styles.css              # all styling (macOS tokens; the canvas colour is --canvas)
+  styles.css              # all styling (macOS tokens; the canvas color is --canvas)
 
 src-tauri/
   src/main.rs             # window, native menu, engine process lifecycle, system commands
@@ -55,7 +55,7 @@ Stored in `~/Library/Application Support/ColorFM-LR/settings.json`, applied imme
 - `deleteExportAfterWriteBack`: defaults to `true`; deletes the 16-bit export once the result exists
 - `window`: last window size, restored on launch (fullscreen/maximised is not recorded)
 
-Reachable from the native menu (`ColorFM > Settings…`, ⌘,) and the slider icon in the toolbar.
+Reachable from the native menu (`ColorFM-LR > Settings…`, ⌘,) and the slider icon in the toolbar.
 
 ## Build
 

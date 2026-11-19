@@ -1,5 +1,5 @@
 /**
- * Colour transform maths, and the batch primitives that move a TIFF through it.
+ * Color transform maths, and the batch primitives that move a TIFF through it.
  *
  * This is the whole public surface of the library. Two rules decide what is in
  * it:
@@ -69,6 +69,6 @@ export { encodeJpeg, fitWithin, preview, savePng16, thumbnailAny } from "./io/th
 export { OnnxPredictor } from "./infer/onnx.js";
 export { INPUT_SIZE, thumbOf, type BackendInfo, type ParamPredictor, type Thumb } from "./infer/index.js";
 
-// --- colour management boundary -------------------------------------------
+// --- color management boundary -------------------------------------------
 // Deliberately empty for now: profiles are carried through byte for byte. The
 // module documents the contract a future implementation has to meet.

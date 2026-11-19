@@ -7,7 +7,7 @@ import { I18nContext, createTranslator, resolveLanguage } from "./lib/i18n";
 import { DEFAULT_SETTINGS, loadSettings, type Settings } from "./lib/settings";
 import SettingsSheet from "./SettingsSheet";
 import Workspace from "./Workspace";
-import { RefreshIcon, SlidersIcon } from "./icons";
+import { BrandMark, RefreshIcon, SlidersIcon } from "./icons";
 
 /** How often the window asks the engine whether Lightroom handed it a task. */
 const POLL_MS = 1200;
@@ -38,7 +38,7 @@ export default function App() {
     void loadSettings().then(setSettings);
   }, []);
 
-  // `ColorFM > Settings…` (⌘,) is a native menu item; it only emits an event.
+  // `ColorFM-LR > Settings…` (⌘,) is a native menu item; it only emits an event.
   useEffect(() => {
     let off: (() => void) | null = null;
     let dropped = false;
@@ -102,9 +102,7 @@ export default function App() {
     if (!engine) return;
 
     const adopt = async (candidate: Session) => {
-      const claimed = needsClaim(candidate)
-        ? await engine.claimSession(candidate.id)
-        : candidate;
+      const claimed = needsClaim(candidate) ? await engine.claimSession(candidate.id) : candidate;
       setSession(claimed);
     };
 
@@ -178,8 +176,8 @@ export default function App() {
       <div className="app">
         <header className="topbar">
           <div className="brand">
-            <span className="mark" aria-hidden />
-            <span className="brand-name">ColorFM</span>
+            <BrandMark className="mark" />
+            <span className="brand-name">ColorFM-LR</span>
           </div>
 
           <div className="status">
@@ -234,11 +232,7 @@ export default function App() {
       </div>
 
       {settingsOpen && (
-        <SettingsSheet
-          settings={settings}
-          onChange={setSettings}
-          onClose={() => setSettingsOpen(false)}
-        />
+        <SettingsSheet settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />
       )}
     </I18nContext.Provider>
   );

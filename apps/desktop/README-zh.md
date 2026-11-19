@@ -53,7 +53,7 @@ src-tauri/
 - `deleteExportAfterWriteBack`：默认 `true`，写回成功即删 16-bit 导出
 - `window`：上次窗口尺寸，启动时恢复（全屏/最大化不记录）
 
-入口是原生菜单 `ColorFM > Settings…`（⌘,）和顶栏的滑块图标。
+入口是原生菜单 `ColorFM-LR > Settings…`（⌘,）和顶栏的滑块图标。
 
 ## 开发与构建
 

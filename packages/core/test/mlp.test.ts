@@ -49,19 +49,19 @@ describe("the transform", () => {
   });
 
   it("batch and per-pixel agree bit for bit", () => {
-    const colours: Array<[number, number, number]> = [];
+    const colors: Array<[number, number, number]> = [];
     for (let i = 0; i < 64; i += 1) {
-      colours.push([i / 63, ((i * 7) % 64) / 63, ((i * 17) % 64) / 63]);
+      colors.push([i / 63, ((i * 7) % 64) / 63, ((i * 17) % 64) / 63]);
     }
-    const flat = new Float32Array(colours.length * 3);
-    colours.forEach(([r, g, b], index) => {
+    const flat = new Float32Array(colors.length * 3);
+    colors.forEach(([r, g, b], index) => {
       flat[index * 3] = r;
       flat[index * 3 + 1] = g;
       flat[index * 3 + 2] = b;
     });
 
     const batch = transferBatch(params, flat);
-    for (let i = 0; i < colours.length; i += 1) {
+    for (let i = 0; i < colors.length; i += 1) {
       // `transfer` returns doubles; the batch returns the f32 buffer the
       // baker stores, so compare in that precision.
       const single = transfer(params, [flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]]).map(Math.fround);
@@ -72,12 +72,12 @@ describe("the transform", () => {
   });
 
   it("does not let one pixel's position in the batch change its result", () => {
-    const colour: [number, number, number] = [0.31, 0.62, 0.93];
-    const alone = transferBatch(params, new Float32Array(colour));
+    const color: [number, number, number] = [0.31, 0.62, 0.93];
+    const alone = transferBatch(params, new Float32Array(color));
 
     const together = new Float32Array(30);
     for (let i = 0; i < 10; i += 1) {
-      together.set(i === 4 ? colour : [i / 10, 1 - i / 10, 0.5], i * 3);
+      together.set(i === 4 ? color : [i / 10, 1 - i / 10, 0.5], i * 3);
     }
     const batch = transferBatch(params, together);
 
@@ -87,9 +87,9 @@ describe("the transform", () => {
   });
 
   it("is deterministic across repeated calls", () => {
-    const colours = new Float32Array([0.1, 0.2, 0.3, 0.9, 0.8, 0.7]);
+    const colors = new Float32Array([0.1, 0.2, 0.3, 0.9, 0.8, 0.7]);
     expect(
-      firstDifference(bitsOfAll(transferBatch(params, colours)), bitsOfAll(transferBatch(params, colours))),
+      firstDifference(bitsOfAll(transferBatch(params, colors)), bitsOfAll(transferBatch(params, colors))),
     ).toBeUndefined();
   });
 

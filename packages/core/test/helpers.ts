@@ -122,7 +122,7 @@ export function deterministicParams(scale = 101, mulBy = 37): number[] {
   return values;
 }
 
-/** A grid of sample colours that covers the cube including its edges. */
+/** A grid of sample colors that covers the cube including its edges. */
 export function sampleGrid(steps: number): Array<[number, number, number]> {
   const samples: Array<[number, number, number]> = [];
   for (let i = 0; i < steps; i += 1) {

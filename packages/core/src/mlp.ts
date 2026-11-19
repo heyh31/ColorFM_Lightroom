@@ -25,7 +25,7 @@
 
 import { MAT_DIM, type Kernels, type Params } from "./params.js";
 
-/** One sRGB-encoded colour, components in 0..1. */
+/** One sRGB-encoded color, components in 0..1. */
 export type RGB = [number, number, number];
 
 const HIDDEN = MAT_DIM;
@@ -125,7 +125,7 @@ function activatePlanes(planes: Float64Array[]): void {
 /**
  * {@link transfer} over an interleaved RGB buffer, evaluated plane-wise.
  *
- * `pixels` holds `n` colours as `r0 g0 b0 r1 g1 b1 …`; the returned buffer has
+ * `pixels` holds `n` colors as `r0 g0 b0 r1 g1 b1 …`; the returned buffer has
  * the same layout and the same values {@link transfer} produces per pixel.
  */
 export function transferBatch(params: Params, pixels: Float32Array): Float32Array {

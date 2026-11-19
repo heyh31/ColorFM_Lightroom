@@ -24,7 +24,7 @@ export function clamp01(value: number): number {
  * Rounds a unit float to the nearest 16-bit code.
  *
  * Out-of-range values clamp to the ends, so a grade that extrapolates past the
- * table's range reads as an over-driven colour rather than wrapping.
+ * table's range reads as an over-driven color rather than wrapping.
  */
 export function quantizeU16(value: number): number {
   if (!(value > 0)) return 0;

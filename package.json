@@ -26,6 +26,9 @@
     "desktop:build": "npm --prefix apps/desktop run tauri -- build",
     "desktop:web": "npm --prefix apps/desktop run dev",
     "model:link": "node scripts/link-model.mjs",
+    "package:engine": "node scripts/package-engine.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "dmg": "node scripts/make-dmg.mjs",
     "bench:core": "tsx tools/bench/core.mts",
     "bench:engine": "tsx tools/bench/engine.mts --reps 3",
     "bench:io": "tsx tools/bench/io.mts --reps 3"

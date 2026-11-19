@@ -1,6 +1,6 @@
 # ColorFM-Lightroom
 
-简体中文 | [English](README.md)
+简体中文 | [English](README-build.md)
 
 面向 Lightroom 的调色迁移引擎：把「一张内容图 + 一张参考图」变成 1248 个调色参数，
 把参数烘成 3D LUT，再把 LUT 应用到 16-bit TIFF 上，且不改动其元数据。
@@ -39,7 +39,7 @@
 |---|---|
 | 发现文件 | `<home>/engine.json`，含 `http_port`、`token`、`pid`——两个客户端都从磁盘读，而不是被告知端口 |
 | 文件路径 | 引擎返回绝对路径；窗口通过 asset protocol 加载，作用域是 `$DOCUMENT/ColorFM-LR/{tasks,cache,history}/**` |
-| 进程生命周期 | 插件负责拉起 `.app`（`open -a ColorFM`）；`.app` 启动引擎，并在会话未完成时让它继续活着 |
+| 进程生命周期 | 插件负责拉起 `.app`（`open -a ColorFM-LR`）；`.app` 启动引擎，并在会话未完成时让它继续活着 |
 
 还有一条只针对窗口：清理临时导出时它直接读 `<home>/lightroom/sessions/*.json`，
 所以会话记录始终是普通 JSON，含 `content_path` / `result_path` / `render_done`。

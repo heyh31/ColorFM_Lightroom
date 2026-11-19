@@ -10,7 +10,7 @@
  * floats.
  */
 
-/** A cubic colour lookup table. */
+/** A cubic color lookup table. */
 export interface Lut3D {
   /** Edge length, at least 2. */
   readonly size: number;
@@ -72,7 +72,7 @@ export function blend(a: Lut3D, b: Lut3D, t: number): Lut3D {
  *
  * `t > 1` extrapolates past the graded look — the "200%" position on the
  * strength slider. Values that leave `[0,1]` are clamped when the samples are
- * written, so this reads as an over-driven grade rather than a colour error.
+ * written, so this reads as an over-driven grade rather than a color error.
  */
 export function blendExtrapolate(a: Lut3D, b: Lut3D, t: number): Lut3D {
   if (a.size !== b.size) throw new RangeError("cannot blend LUTs of different sizes");

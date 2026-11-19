@@ -3,7 +3,7 @@
 [简体中文](README-zh.md) | English
 
 The Lightroom Classic half of ColorFM: a Lua plug-in (`colorfm.lrplugin`) that exports,
-hands over, and imports. It **touches no pixels** — all colour work lives in the engine
+hands over, and imports. It **touches no pixels** — all color work lives in the engine
 , and the original photo is never modified.
 
 ## One full run
@@ -32,10 +32,10 @@ easy to look in the wrong spot):
 | **File > Plug-in Extras** (`LrExportMenuItems`) | the 4 real commands |
 | **Library > Plug-in Extras** (`LrLibraryMenuItems`) | the 4 real commands + 3 SDK self-tests |
 
-- `ColorFM：处理当前照片…` — process the selected photo (`MenuProcess.lua`)
-- `ColorFM：继续未完成会话…` — resume an unfinished session (`MenuResume.lua`)
-- `ColorFM：检查引擎状态` — engine status (`MenuStatus.lua`)
-- `ColorFM：设置桌面应用路径…` — point at the app (`MenuSetApp.lua`, stored as `colorfmAppPath` in `LrPrefs`)
+- `ColorFM-LR：处理当前照片…` — process the selected photo (`MenuProcess.lua`)
+- `ColorFM-LR：继续未完成会话…` — resume an unfinished session (`MenuResume.lua`)
+- `ColorFM-LR：检查引擎状态` — engine status (`MenuStatus.lua`)
+- `ColorFM-LR：设置桌面应用路径…` — point at the app (`MenuSetApp.lua`, stored as `colorfmAppPath` in `LrPrefs`)
 
 ## Files
 
@@ -55,7 +55,7 @@ including the export keys verified on Lightroom Classic 15.1.
 
 ```bash
 ln -s "$PWD/hosts/lightroom/colorfm.lrplugin" \
-      ~/Library/Application\ Support/Adobe/Lightroom/Modules/ColorFM.lrplugin
+      ~/Library/Application\ Support/Adobe/Lightroom/Modules/colorfm.lrplugin
 ```
 
 Or use **File > Plug-in Manager > Add** and select the `colorfm.lrplugin` directory.

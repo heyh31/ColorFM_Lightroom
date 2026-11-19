@@ -62,6 +62,8 @@ export interface TiffInfo {
   predictor: number;
   littleEndian: boolean;
   tiled: boolean;
+  /** Rows in a strip; `height` for a single-strip file, 0 when tiled. */
+  rowsPerStrip: number;
   /** Number of chunks (strips or tiles). */
   chunkCount: number;
   /** Bytes of the embedded ICC profile, 0 when there is none. */
@@ -221,6 +223,9 @@ export class TiffReader {
           littleEndian,
         ).length;
 
+    // 2^32-1 is the conventional "one strip" value; clamping to the height
+    // keeps the arithmetic below in range for both spellings.
+    const rowsPerStrip = tiled ? 0 : Math.min(read(Tag.RowsPerStrip, height), height);
     const icc = entries.get(Tag.IccProfile);
 
     return {
@@ -234,6 +239,7 @@ export class TiffReader {
       predictor,
       littleEndian,
       tiled,
+      rowsPerStrip,
       chunkCount,
       iccProfileBytes: icc ? icc.count : 0,
     };
@@ -323,7 +329,10 @@ export class TiffReader {
       throw ColorfmError.tiff(`chunk ${index} out of range`);
     }
     const compressed = readAt(this.fd, offsets[index], counts[index]);
-    const raw = this.decompress(compressed, counts[index]);
+    // The decoded size comes from the geometry, not from the compressed byte
+    // count: a PackBits block is usually smaller than what it expands to, and
+    // using the wrong number silently truncates the strip.
+    const raw = this.decompress(compressed, this.decodedSize(index));
     const samples = this.toSamples(raw);
 
     if (this.info.predictor === PREDICTOR_HORIZONTAL) {
@@ -331,6 +340,15 @@ export class TiffReader {
       undoHorizontalPredictor(samples, rowSamples, this.info.bitsPerSample);
     }
     return samples;
+  }
+
+  /** Bytes a strip occupies once decompressed, from the header geometry. */
+  private decodedSize(index: number): number {
+    const { width, height, samplesPerPixel, bitsPerSample, rowsPerStrip } = this.info;
+    const rowBytes = width * samplesPerPixel * (bitsPerSample / 8);
+    const first = index * rowsPerStrip;
+    const rows = Math.max(0, Math.min(rowsPerStrip, height - first));
+    return rows * rowBytes;
   }
 
   private decompress(data: Uint8Array, expectedBytes: number): Uint8Array {
@@ -386,7 +404,7 @@ export class TiffReader {
     );
   }
 
-  /** Rejects rasters this pipeline cannot colour-transform. */
+  /** Rejects rasters this pipeline cannot color-transform. */
   requireRgb16(): void {
     const { photometric, samplesPerPixel, bitsPerSample } = this.info;
     if (photometric !== PHOTOMETRIC_RGB || samplesPerPixel !== 3 || bitsPerSample !== 16) {

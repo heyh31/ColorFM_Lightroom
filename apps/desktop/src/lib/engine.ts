@@ -149,11 +149,7 @@ export class Engine {
     return new Engine(info);
   }
 
-  private async request<T>(
-    method: "GET" | "POST",
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`http://127.0.0.1:${this.port}${path}`, {
@@ -203,10 +199,7 @@ export class Engine {
       onProgress?.(job);
       if (job.state !== "queued" && job.state !== "running") {
         if (job.state === "error") {
-          throw new EngineError(
-            job.error?.code ?? "E_JOB_FAILED",
-            job.error?.message ?? "job failed",
-          );
+          throw new EngineError(job.error?.code ?? "E_JOB_FAILED", job.error?.message ?? "job failed");
         }
         if (job.state === "canceled") {
           throw new EngineError("E_CANCELED", "job canceled");
@@ -226,49 +219,34 @@ export class Engine {
 
   /** Imported results only; abandoned renders are not history. */
   async history(): Promise<HistoryEntry[]> {
-    const data = await this.request<{ entries: HistoryEntry[] }>(
-      "GET",
-      "/v1/lightroom/history",
-    );
+    const data = await this.request<{ entries: HistoryEntry[] }>("GET", "/v1/lightroom/history");
     return data.entries;
   }
 
   async getSession(id: string): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "GET",
-      `/v1/lightroom/sessions/${id}`,
-    );
+    const data = await this.request<{ session: Session }>("GET", `/v1/lightroom/sessions/${id}`);
     return data.session;
   }
 
   /** Tells the engine that this window owns the session; idempotent. */
   async claimSession(id: string): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "POST",
-      `/v1/lightroom/sessions/${id}/claim`,
-    );
+    const data = await this.request<{ session: Session }>("POST", `/v1/lightroom/sessions/${id}/claim`);
     return data.session;
   }
 
-  async previewSession(
-    id: string,
-    referencePath: string,
-    strength: number,
-  ): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "POST",
-      `/v1/lightroom/sessions/${id}/preview`,
-      { reference_path: referencePath, strength },
-    );
+  async previewSession(id: string, referencePath: string, strength: number): Promise<Session> {
+    const data = await this.request<{ session: Session }>("POST", `/v1/lightroom/sessions/${id}/preview`, {
+      reference_path: referencePath,
+      strength,
+    });
     return data.session;
   }
 
   async confirmSession(id: string, strength: number, out?: string): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "POST",
-      `/v1/lightroom/sessions/${id}/confirm`,
-      { strength, ...(out ? { out } : {}) },
-    );
+    const data = await this.request<{ session: Session }>("POST", `/v1/lightroom/sessions/${id}/confirm`, {
+      strength,
+      ...(out ? { out } : {}),
+    });
     return data.session;
   }
 
@@ -281,18 +259,12 @@ export class Engine {
   }
 
   async sessionImported(id: string): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "POST",
-      `/v1/lightroom/sessions/${id}/imported`,
-    );
+    const data = await this.request<{ session: Session }>("POST", `/v1/lightroom/sessions/${id}/imported`);
     return data.session;
   }
 
   async cancelSession(id: string): Promise<Session> {
-    const data = await this.request<{ session: Session }>(
-      "POST",
-      `/v1/lightroom/sessions/${id}/cancel`,
-    );
+    const data = await this.request<{ session: Session }>("POST", `/v1/lightroom/sessions/${id}/cancel`);
     return data.session;
   }
 }

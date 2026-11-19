@@ -1,5 +1,5 @@
 /**
- * Error type for the colour maths layer.
+ * Error type for the color maths layer.
  *
  * Callers get a `kind` they can branch on and a message that is already fit to
  * show a user; nothing here knows about HTTP status codes or UI copy.

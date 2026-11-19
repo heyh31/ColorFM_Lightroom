@@ -20,7 +20,7 @@ job worker.
 | `src/lut/` | 3D LUT: `table.ts` (type and blending), `bake.ts`, `apply.ts`, `cube.ts` |
 | `src/io/` | Streaming TIFF transform, thumbnails, previews; `codec/` holds the file formats |
 | `src/infer/` | 256×256 model input (`types.ts`) and the ONNX Runtime backend (`onnx.ts`) |
-| `src/color.ts` | Colour management placeholder (not ICC-aware) |
+| `src/color.ts` | Color management placeholder (not ICC-aware) |
 | `src/pipeline.ts` | `applyLut*` / `applyDirect*` — the entry points that wire the rest together |
 | `src/index.ts` | The package surface: re-exports only |
 | `src/bin/colorfm.ts` | CLI: two images in, one graded TIFF out |
@@ -62,7 +62,7 @@ for the per-stage breakdown and how the hot loop is written.
 
 ## What this package is, and is not
 
-`src/index.ts` is the contract. It exports colour maths and **batch** primitives:
+`src/index.ts` is the contract. It exports color maths and **batch** primitives:
 
 | Batch | Shape |
 |---|---|
@@ -86,7 +86,7 @@ through `index.ts` for a test to reach it, it is not part of the contract.
 
 | Format | Read | Write | Notes |
 |---|---|---|---|
-| TIFF | strips: none, LZW, Deflate, PackBits; tiles rejected | uncompressed RGB16 strips | horizontal predictor understood; own reader, because the graded output is a byte copy with only the pixels replaced |
+| TIFF | strips: none, LZW, Deflate, PackBits, horizontal predictor (16-bit); tiles rejected | uncompressed RGB16 strips | own reader: the graded output is a byte copy with only the pixel bytes replaced, so it needs strip offsets and per-block reads — neither of which a decode-to-pixels library exposes |
 | PNG | 8/16-bit, greyscale/RGB/palette/alpha, interlace | 16-bit RGB (own writer) | 16→8 rounding is `(c + 128) / 257`; sharp cannot ingest 16-bit raw, so the 256×256 model input is written here |
 | JPEG | baseline, progressive, CMYK | baseline, 4:4:4 | platform decoder (libjpeg-turbo) |
 | WebP, AVIF, HEIF | via libvips | — | reference images only; the graded output stays TIFF |

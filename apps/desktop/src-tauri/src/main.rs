@@ -148,8 +148,67 @@ fn resolve_engine() -> Option<EngineLaunch> {
     entries.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../packages/engine/dist/main.js"));
 
     let entry = entries.into_iter().find(|path| path.is_file())?;
-    let node = resolve_node()?;
+    // A release ships its own runtime next to the entry, so the app does not
+    // depend on Node being installed. Falling back to PATH keeps `tauri dev`
+    // and a checkout working unchanged.
+    let bundled_node = entry
+        .parent()
+        .map(|dir| dir.join("node"))
+        .filter(|path| path.is_file());
+    let node = bundled_node.or_else(resolve_node)?;
     Some(EngineLaunch::Script { node, entry })
+}
+
+/// Copies a directory tree, used to install the plug-in.
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Installs the Lightroom plug-in that ships inside the bundle.
+///
+/// Without it the app is only half the product: Lightroom needs a plug-in in
+/// its Modules folder to export the TIFF and import the result. Installing on
+/// first launch means the user does not have to find a `.lrplugin` inside a
+/// `.app` and add it by hand. Lightroom scans that folder at start-up, so an
+/// install that happens while it is running takes effect next time it opens.
+fn ensure_lightroom_plugin() -> Option<PathBuf> {
+    // A directory, so `bundle_resource` (which asks `is_file`) cannot be used.
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from))?;
+    let source = dir.join("../Resources/lightroom/colorfm.lrplugin");
+    if !source.is_dir() {
+        return None;
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from)?;
+    let modules = home.join("Library/Application Support/Adobe/Lightroom/Modules");
+    let target = modules.join("colorfm.lrplugin");
+    if target.join("Info.lua").is_file() {
+        return Some(target);
+    }
+    std::fs::create_dir_all(&modules).ok()?;
+    copy_dir(&source, &target).ok()?;
+    eprintln!("colorfm: installed plug-in {}", target.display());
+    Some(target)
+}
+
+/// A file under `Contents/Resources`, for the paths the bundle carries.
+fn bundle_resource(relative: &str) -> Option<PathBuf> {
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from))?;
+    let candidate = dir.join("../Resources").join(relative);
+    candidate.is_file().then_some(candidate)
 }
 
 /// Minimal HTTP GET against the local engine. The responses here are small JSON
@@ -282,6 +341,11 @@ fn start_engine(state: State<'_, EngineProcess>) -> Result<EngineInfo, String> {
                 command
             }
         };
+        // The bundled model lives in the resources, not next to the entry, so
+        // hand the engine its path instead of letting it guess.
+        if let Some(model) = bundle_resource("models/colorfm_l.onnx") {
+            command.env("COLORFM_MODEL", model);
+        }
         let child = command
             .arg("serve")
             .arg("--port")
@@ -312,7 +376,7 @@ fn start_engine(state: State<'_, EngineProcess>) -> Result<EngineInfo, String> {
 #[tauri::command]
 fn pick_reference() -> Result<Option<String>, String> {
     let script = r#"try
-set pickedFile to choose file with prompt "选择 ColorFM 参考图" of type {"public.image"}
+set pickedFile to choose file with prompt "选择 ColorFM-LR 参考图" of type {"public.image"}
 return POSIX path of pickedFile
 on error number -128
 return ""
@@ -397,7 +461,7 @@ fn save_settings(value: settings::Settings) -> Result<settings::Settings, String
 #[tauri::command]
 fn pick_folder() -> Result<Option<String>, String> {
     let script = r#"try
-set pickedFolder to choose folder with prompt "Choose where ColorFM writes results"
+set pickedFolder to choose folder with prompt "Choose where ColorFM-LR writes results"
 return POSIX path of pickedFolder
 on error number -128
 return ""
@@ -425,7 +489,7 @@ fn delete_exported_file(path: String) -> Result<(), String> {
     let root = library_dir().join("lightroom");
     let candidate = PathBuf::from(&path);
     if !candidate.starts_with(&root) {
-        return Err("refusing to delete a file outside the ColorFM workspace".into());
+        return Err("refusing to delete a file outside the ColorFM-LR workspace".into());
     }
     match std::fs::remove_file(&candidate) {
         Ok(()) => {
@@ -596,11 +660,11 @@ fn is_dir(path: &Path) -> bool {
 fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let about = PredefinedMenuItem::about(
         app,
-        Some("About ColorFM"),
+        Some("About ColorFM-LR"),
         Some(tauri::menu::AboutMetadata {
-            name: Some("ColorFM".into()),
+            name: Some("ColorFM-LR".into()),
             version: Some(env!("CARGO_PKG_VERSION").into()),
-            comments: Some("Reference-driven colour grading for Lightroom Classic".into()),
+            comments: Some("Reference-driven color grading for Lightroom Classic".into()),
             ..Default::default()
         }),
     )?;
@@ -608,7 +672,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
 
-    let app_menu = SubmenuBuilder::new(app, "ColorFM")
+    let app_menu = SubmenuBuilder::new(app, "ColorFM-LR")
         .item(&about)
         .separator()
         .item(&settings_item)
@@ -646,6 +710,9 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
+            // Ship both halves: the plug-in is installed here, before the
+            // window opens, so a fresh install works after one Lightroom restart.
+            ensure_lightroom_plugin();
             let home = home_dir();
             if settings::load(&home).delete_export_after_write_back {
                 // Before the window opens: renders that finished while the app
@@ -707,7 +774,7 @@ fn main() {
             cleanup_exports
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build the ColorFM window");
+        .expect("failed to build the ColorFM-LR window");
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {

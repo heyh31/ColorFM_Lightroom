@@ -372,7 +372,7 @@ function Session.configureAppPath()
         title = "ColorFM：桌面应用路径",
         contents = {
             {
-                title = "ColorFM.app 的完整路径（留空则使用 /Applications 中的 ColorFM）",
+                title = "ColorFM-LR.app 的完整路径（留空则使用 /Applications 中的 ColorFM-LR）",
                 bind_to_object = props,
                 property = "path",
             },

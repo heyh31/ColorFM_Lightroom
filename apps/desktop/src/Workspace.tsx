@@ -10,13 +10,7 @@ import {
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-import {
-  Engine,
-  describeError,
-  type HistoryEntry,
-  type Job,
-  type Session,
-} from "./lib/engine";
+import { Engine, describeError, type HistoryEntry, type Job, type Session } from "./lib/engine";
 import { ArrowRightIcon, CheckIcon, FolderIcon, ImageIcon, RefreshIcon } from "./icons";
 import { useI18n } from "./lib/i18n";
 import type { Settings } from "./lib/settings";
@@ -187,9 +181,7 @@ function ZoomableImage({ src, alt, resetKey }: { src: string; alt: string; reset
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) dragged.current = true;
-    setOffset(
-      clampOffset(picture.current, frame.current, zoomRef.current, start.ox + dx, start.oy + dy),
-    );
+    setOffset(clampOffset(picture.current, frame.current, zoomRef.current, start.ox + dx, start.oy + dy));
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -358,13 +350,7 @@ function Panel({
  * slider underneath, and the imported results as a filmstrip — newest on the
  * right, the way Lightroom's own strip behaves.
  */
-export default function Workspace({
-  engine,
-  session,
-  settings,
-  onRefresh,
-  onCloseSession,
-}: Props) {
+export default function Workspace({ engine, session, settings, onRefresh, onCloseSession }: Props) {
   const { t } = useI18n();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -405,12 +391,9 @@ export default function Workspace({
   const live = selected ? null : session;
   const sessionId = session?.id ?? null;
   const sessionVisuals = visuals.current.sessionId === sessionId ? visuals.current : null;
-  const contentSrc =
-    selected?.content_thumb ?? live?.preview_before_path ?? sessionVisuals?.content ?? null;
-  const resultSrc =
-    selected?.result_thumb ?? live?.preview_after_path ?? sessionVisuals?.result ?? null;
-  const styleSrc =
-    selected?.reference_thumb ?? live?.preview_style_path ?? sessionVisuals?.style ?? null;
+  const contentSrc = selected?.content_thumb ?? live?.preview_before_path ?? sessionVisuals?.content ?? null;
+  const resultSrc = selected?.result_thumb ?? live?.preview_after_path ?? sessionVisuals?.result ?? null;
+  const styleSrc = selected?.reference_thumb ?? live?.preview_style_path ?? sessionVisuals?.style ?? null;
   const contentVersion = selected?.imported_at ?? sessionId ?? "";
   const resultVersion =
     selected?.imported_at ?? live?.preview_job_id ?? live?.render_job_id ?? live?.updated_at ?? "";
@@ -433,12 +416,7 @@ export default function Workspace({
     if (session?.preview_before_path) visuals.current.content = session.preview_before_path;
     if (session?.preview_after_path) visuals.current.result = session.preview_after_path;
     if (session?.preview_style_path) visuals.current.style = session.preview_style_path;
-  }, [
-    sessionId,
-    session?.preview_before_path,
-    session?.preview_after_path,
-    session?.preview_style_path,
-  ]);
+  }, [sessionId, session?.preview_before_path, session?.preview_after_path, session?.preview_style_path]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -652,9 +630,7 @@ export default function Workspace({
           </p>
           <h1>{live?.label ?? selected?.label ?? t("title.empty")}</h1>
           <p className="path" title={live?.content_path ?? selected?.result_path ?? ""}>
-            {live?.content_path ??
-              selected?.result_path ??
-              t("title.emptyHint")}
+            {live?.content_path ?? selected?.result_path ?? t("title.emptyHint")}
           </p>
         </div>
 
@@ -690,9 +666,7 @@ export default function Workspace({
             <>
               <button
                 className="button"
-                onClick={() =>
-                  live.result_path && invoke("reveal_in_finder", { path: live.result_path })
-                }
+                onClick={() => live.result_path && invoke("reveal_in_finder", { path: live.result_path })}
               >
                 <FolderIcon />
                 {t("action.reveal")}
@@ -722,8 +696,7 @@ export default function Workspace({
                 className="button"
                 disabled={!selected.result_path}
                 onClick={() =>
-                  selected.result_path &&
-                  invoke("reveal_in_finder", { path: selected.result_path })
+                  selected.result_path && invoke("reveal_in_finder", { path: selected.result_path })
                 }
               >
                 <FolderIcon />
@@ -735,7 +708,11 @@ export default function Workspace({
             </>
           )}
 
-          <button className="icon-button" onClick={() => void loadHistory()} title={t("action.refreshHistory")}>
+          <button
+            className="icon-button"
+            onClick={() => void loadHistory()}
+            title={t("action.refreshHistory")}
+          >
             <RefreshIcon />
           </button>
         </div>
@@ -779,9 +756,7 @@ export default function Workspace({
           // With a reference loaded the panel belongs to zoom/pan; the header
           // link is the way to swap it. Click-to-pick stays for the empty state
           // only, so a double-click to zoom cannot open the file dialog twice.
-          onAction={
-            live && !terminal && !renderDone && live.state !== "rendering" ? pickStyle : undefined
-          }
+          onAction={live && !terminal && !renderDone && live.state !== "rendering" ? pickStyle : undefined}
           onClick={
             live && !terminal && !renderDone && live.state !== "rendering" && !styleSrc
               ? pickStyle
@@ -809,9 +784,7 @@ export default function Workspace({
       </div>
 
       <div className="filmstrip" ref={strip}>
-        {history.length === 0 && (
-          <p className="film-empty">{t("filmstrip.empty")}</p>
-        )}
+        {history.length === 0 && <p className="film-empty">{t("filmstrip.empty")}</p>}
         {stripEntries.map((entry, index) => (
           <button
             key={entry.id}

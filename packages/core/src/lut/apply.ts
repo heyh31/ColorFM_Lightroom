@@ -23,7 +23,7 @@ const pointScratch = new Float32Array(3);
 /** Reused copy of the source, for the strength path. */
 let strengthScratch = new Float32Array(0);
 
-/** Trilinear lookup for one colour. Input is clamped to `[0,1]`. */
+/** Trilinear lookup for one color. Input is clamped to `[0,1]`. */
 export function apply(lut: Lut3D, rgb: RGB): RGB {
   pointScratch[0] = rgb[0];
   pointScratch[1] = rgb[1];

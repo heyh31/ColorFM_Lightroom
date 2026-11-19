@@ -64,7 +64,7 @@ export function encodePng16(width: number, height: number, samples: Uint16Array)
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header[8] = 16; // bit depth
-  header[9] = 2; // colour type: truecolour
+  header[9] = 2; // color type: truecolour
   header[10] = 0; // deflate
   header[11] = 0; // adaptive filtering
   header[12] = 0; // no interlace

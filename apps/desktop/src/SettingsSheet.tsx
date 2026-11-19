@@ -40,8 +40,12 @@ export default function SettingsSheet({ settings, onChange, onClose }: Props) {
   useEffect(() => setDraft(settings), [settings]);
 
   useEffect(() => {
-    void getVersion().then(setVersion).catch(() => setVersion(""));
-    void invoke<string>("data_dir").then(setDataDir).catch(() => setDataDir(""));
+    void getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(""));
+    void invoke<string>("data_dir")
+      .then(setDataDir)
+      .catch(() => setDataDir(""));
   }, []);
 
   useEffect(() => {
@@ -81,9 +85,7 @@ export default function SettingsSheet({ settings, onChange, onClose }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      const report = await invoke<{ removed: number; freed: number; skipped: number }>(
-        "cleanup_exports",
-      );
+      const report = await invoke<{ removed: number; freed: number; skipped: number }>("cleanup_exports");
       // Anything a session is still reading is reported rather than silently
       // left behind — otherwise "clean up" looks broken when it keeps files.
       const skipped = report.skipped ?? 0;
@@ -208,9 +210,7 @@ export default function SettingsSheet({ settings, onChange, onClose }: Props) {
                   <input
                     type="checkbox"
                     checked={draft.deleteExportAfterWriteBack}
-                    onChange={(event) =>
-                      void update({ deleteExportAfterWriteBack: event.target.checked })
-                    }
+                    onChange={(event) => void update({ deleteExportAfterWriteBack: event.target.checked })}
                   />
                   <span className="track" />
                 </label>
@@ -229,7 +229,7 @@ export default function SettingsSheet({ settings, onChange, onClose }: Props) {
             <h3>{t("settings.group.about")}</h3>
             <div className="group-card">
               <div className="row">
-                <span className="row-label">ColorFM</span>
+                <span className="row-label">ColorFM-LR</span>
                 <span className="row-value">{version ? `${t("settings.version")} ${version}` : ""}</span>
               </div>
               <div className="row">

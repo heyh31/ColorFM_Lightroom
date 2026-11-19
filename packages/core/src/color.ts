@@ -1,5 +1,5 @@
 /**
- * Colour management: ICC profiles and sRGB <-> working-space conversion.
+ * Color management: ICC profiles and sRGB <-> working-space conversion.
  *
  * Placeholder. The contract it must serve: decode the ICC profile of the
  * incoming TIFF into sRGB-encoded float **without clamping**, let the model
@@ -14,5 +14,5 @@ export interface IccProfile {
   readonly bytes: Uint8Array;
 }
 
-/** True when this build performs real colour management. */
+/** True when this build performs real color management. */
 export const ICC_AWARE = false;

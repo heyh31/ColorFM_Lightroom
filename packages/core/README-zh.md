@@ -78,7 +78,7 @@ const thumb = await thumbnailAny("reference.jpg", INPUT_SIZE);  // 解码是异�
 
 | 格式 | 读 | 写 | 说明 |
 |---|---|---|---|
-| TIFF | strip：none、LZW、Deflate、PackBits；拒绝 tiled | 未压缩 RGB16 strip | 支持 horizontal predictor；自研读取器，因为调色输出只是替换了像素的字节副本 |
+| TIFF | strip：none、LZW、Deflate、PackBits、horizontal predictor（16 位）；拒绝 tiled | 未压缩 RGB16 strip | 自研读取器：调色输出只是替换了像素字节的副本，需要 strip 偏移与按块读取，而"解码成像素"的库不提供这两样 |
 | PNG | 8/16 位，灰度/RGB/调色板/alpha，支持隔行 | 16-bit RGB（自研写入器） | 16→8 取整为 `(c + 128) / 257`；sharp 无法接收 16 位 raw，所以 256×256 模型输入由这里写 |
 | JPEG | baseline、progressive、CMYK | baseline、4:4:4 | 平台解码器（libjpeg-turbo） |
 | WebP、AVIF、HEIF | 经 libvips | — | 只作参考图；调色输出仍是 TIFF |

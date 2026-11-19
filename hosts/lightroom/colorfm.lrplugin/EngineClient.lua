@@ -275,7 +275,7 @@ local function checkoutApp()
     end
 
     local candidates = {
-        "apps/desktop/src-tauri/target/release/bundle/macos/ColorFM.app",
+        "apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app",
         "apps/desktop/src-tauri/target/release/colorfm-desktop",
     }
 
@@ -332,7 +332,7 @@ function EngineClient.launchApp()
         -- `open` would hand a bare binary to Terminal, so detach it ourselves.
         command = "nohup " .. shellQuote(path) .. " >/dev/null 2>&1 &"
     else
-        command = "open -a ColorFM"
+        command = "open -a ColorFM-LR"
     end
 
     local status = LrTasks.execute(command)
@@ -349,10 +349,10 @@ function EngineClient.connect()
 
     if not EngineClient.launchApp() then
         return nil, table.concat({
-            "无法启动 ColorFM 桌面应用。",
+            "无法启动 ColorFM-LR 桌面应用。",
             "",
-            "・安装版：把 ColorFM.app 放进 /Applications；",
-            "・源码目录：先构建一次 npm run tauri build -- --bundles app（插件会自动找到 apps/desktop/src-tauri/target/release/bundle/macos/ColorFM.app）；",
+            "・安装版：把 ColorFM-LR.app 放进 /Applications；",
+            "・源码目录：先构建一次 npm run tauri build -- --bundles app（插件会自动找到 apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app）；",
             "・也可以先手动打开桌面应用，再回到 Lightroom 重试（引擎在跑时不会尝试拉起）。",
         }, "\n")
     end

@@ -81,3 +81,39 @@ export function CheckIcon({ size = 15, className }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * The app mark, drawn from the same numbers as `apps/desktop/src-tauri/icons`:
+ * seven ellipses in a level row, each tilted 46° up to the right, on a white
+ * plate. Small enough that the tilt reads as texture rather than as shapes.
+ */
+const MARK_COLOURS = ["#E8958B", "#E7A575", "#E2C67D", "#9BC48D", "#8BC4BA", "#8FAEDB", "#B49BD3"];
+
+export function BrandMark({ size = 18, className }: IconProps) {
+  const step = (1024 * 0.76) / (MARK_COLOURS.length - 1);
+  return (
+    <svg viewBox="0 0 1024 1024" width={size} height={size} className={className} aria-hidden>
+      <rect x="56" y="56" width="912" height="912" rx="205" fill="#ffffff" />
+      <clipPath id="brand-clip">
+        <rect x="56" y="56" width="912" height="912" rx="205" />
+      </clipPath>
+      <g clipPath="url(#brand-clip)">
+        {MARK_COLOURS.map((color, index) => {
+          const cx = 512 + (index - (MARK_COLOURS.length - 1) / 2) * step;
+          return (
+            <ellipse
+              key={color}
+              cx={cx}
+              cy={512}
+              rx={1024 * 0.13}
+              ry={1024 * 0.09}
+              fill={color}
+              opacity={0.82}
+              transform={`rotate(-46 ${cx} 512)`}
+            />
+          );
+        })}
+      </g>
+    </svg>
+  );
+}

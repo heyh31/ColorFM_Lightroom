@@ -1,4 +1,4 @@
--- ColorFM Lightroom plug-in.
+-- ColorFM-LR Lightroom plug-in.
 --
 -- Where the menu entries land (this trips people up):
 --   LrExportMenuItems   -> 文件 > 增效工具额外信息   (File > Plug-in Extras)
@@ -20,24 +20,24 @@ return {
     LrSdkVersion = 10.0,
     LrSdkMinimumVersion = 5.0,
     LrToolkitIdentifier = "com.colorfm.lightroom",
-    LrPluginName = "ColorFM",
+    LrPluginName = "ColorFM-LR",
 
     -- 文件 > 增效工具额外信息
     LrExportMenuItems = {
         {
-            title = "ColorFM：处理当前照片…",
+            title = "ColorFM-LR：处理当前照片…",
             file = "MenuProcess.lua",
         },
         {
-            title = "ColorFM：继续未完成会话…",
+            title = "ColorFM-LR：继续未完成会话…",
             file = "MenuResume.lua",
         },
         {
-            title = "ColorFM：检查引擎状态",
+            title = "ColorFM-LR：检查引擎状态",
             file = "MenuStatus.lua",
         },
         {
-            title = "ColorFM：设置桌面应用路径…",
+            title = "ColorFM-LR：设置桌面应用路径…",
             file = "MenuSetApp.lua",
         },
     },
@@ -45,31 +45,31 @@ return {
     -- 图库 > 增效工具额外功能 (same commands, plus the SDK probes)
     LrLibraryMenuItems = {
         {
-            title = "ColorFM：处理当前照片…",
+            title = "ColorFM-LR：处理当前照片…",
             file = "MenuProcess.lua",
         },
         {
-            title = "ColorFM：继续未完成会话…",
+            title = "ColorFM-LR：继续未完成会话…",
             file = "MenuResume.lua",
         },
         {
-            title = "ColorFM：检查引擎状态",
+            title = "ColorFM-LR：检查引擎状态",
             file = "MenuStatus.lua",
         },
         {
-            title = "ColorFM：设置桌面应用路径…",
+            title = "ColorFM-LR：设置桌面应用路径…",
             file = "MenuSetApp.lua",
         },
         {
-            title = "ColorFM 测试：导出当前照片 TIFF…",
+            title = "ColorFM-LR 测试：导出当前照片 TIFF…",
             file = "MenuExport.lua",
         },
         {
-            title = "ColorFM 测试：导入 TIFF 为新照片…",
+            title = "ColorFM-LR 测试：导入 TIFF 为新照片…",
             file = "MenuImport.lua",
         },
         {
-            title = "ColorFM 测试：导出并堆叠导入…",
+            title = "ColorFM-LR 测试：导出并堆叠导入…",
             file = "MenuRoundTrip.lua",
         },
     },
