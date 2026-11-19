@@ -8,30 +8,15 @@
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { TiffReader } from "../../core/src/io/codec/tiff.js";
+import { Rgb16TiffWriter, TiffReader } from "../../core/src/io/codec/tiff.js";
 
 import { call, startApi, tempApp, waitForJob } from "./helpers.js";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
-const REPO_ROOT = resolve(here, "../../..");
-const REFERENCE = resolve(REPO_ROOT, "tools/reference/target/release/colorfm-reference");
-
-function fixtureAvailable(): boolean {
-  try {
-    readFileSync(REFERENCE);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const SKIP = fixtureAvailable() ? false : "reference harness missing: run `npm run reference:build`";
+const SKIP = false;
 
 const roots: string[] = [];
 const closers: Array<() => Promise<void>> = [];
@@ -43,14 +28,25 @@ afterAll(async () => {
 /** 240x360 split into 30-row strips: twelve bands, so the fan-out engages. */
 function makeFixture(dir: string): { content: string; params: string } {
   const content = join(dir, "export.tiff");
-  const request = join(dir, "fixture.json");
-  writeFileSync(
-    request,
-    JSON.stringify({ path: content, width: 240, height: 360, kind: "wide", rows_per_strip: 30 }),
-  );
-  // The harness writes the fixture: the only way to get a multi-strip file
-  // without duplicating the encoder in the test.
-  execFileSync(REFERENCE, ["fixture", request], { encoding: "utf8" });
+  const width = 240;
+  const height = 360;
+  const rowsPerStrip = 30;
+  const writer = new Rgb16TiffWriter(content, width, height, rowsPerStrip);
+  for (let first = 0; first < height; first += rowsPerStrip) {
+    const rows = Math.min(rowsPerStrip, height - first);
+    const samples = new Uint16Array(rows * width * 3);
+    for (let r = 0; r < rows; r += 1) {
+      const y = first + r;
+      for (let x = 0; x < width; x += 1) {
+        const at = (r * width + x) * 3;
+        samples[at] = (x * 131 + y * 977) % 65536;
+        samples[at + 1] = (x * 4099 + y * 61) % 65536;
+        samples[at + 2] = (x * 257 + y * 6553) % 65536;
+      }
+    }
+    writer.writeStrip(samples);
+  }
+  writer.finish();
 
   const params = join(dir, "params.txt");
   const values: string[] = [];

@@ -62,8 +62,6 @@ function defaultModelPath(): string {
     join(here, "../../../../Resources/models/colorfm_l.onnx"),
     join(here, "../../../models/colorfm_l.onnx"),
     join(repoRoot, "models/colorfm_l.onnx"),
-    // Development: the weights live beside the reference implementation.
-    join(repoRoot, "../colorfm-lightroom-rs/models/colorfm_l.onnx"),
     join(process.cwd(), "models/colorfm_l.onnx"),
   ]) {
     if (existsSync(candidate)) return candidate;

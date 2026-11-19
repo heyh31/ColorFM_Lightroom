@@ -49,8 +49,8 @@ const thumb = await thumbnailAny("reference.jpg", INPUT_SIZE);  // 解码是异�
 
 ## 吞吐
 
-32.3 MP 的一帧（`6960 x 4640`）按行分带铺到多核后约 **1.0 秒**渲染完，单 worker 是 2.5 秒。
-33³ 表烘焙约 120 ms，单核查表约 31 Mpx/s，所以一次交互式预览刷新大约 0.2 秒的像素工作量。
+32.3 MP 的一帧（`6960 x 4640`）按行分带铺到多核后 **0.73 秒**渲染完，单 worker 是 1.3 秒。
+33³ 表烘焙 76 ms，单核查表约 48 Mpx/s。
 逐阶段拆解和热循环怎么写见 [`docs/performance.md`](../../docs/performance.md)。
 
 ## 这个包是什么，不是什么

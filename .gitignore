@@ -57,10 +57,6 @@ vitest.config.ts.timestamp-*
 __pycache__/
 *.py[cod]
 
-# The reference harness is a local test fixture; its lock file is regenerated on
-# `npm run reference:build` and is not part of the shipped graph.
-tools/reference/Cargo.lock
-
 # ---------------------------------------------------------------------------
 # Local run state
 # ---------------------------------------------------------------------------
@@ -72,7 +68,7 @@ engine.json
 engine.lock
 
 # The checkpoint is 118 MB and is linked, not stored: `npm run model:link`
-# points models/colorfm_l.onnx at the file in the reference checkout.
+# points models/colorfm_l.onnx at it, and `COLORFM_MODEL` names the source.
 models/*.onnx
 
 # Agent session notes for this workspace; local to the machine.

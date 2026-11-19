@@ -213,7 +213,7 @@ describe("Lightroom plug-in contract", () => {
     expect(jsonString(claimed.text, "state")).toBe("waiting_for_reference");
   });
 
-  it("stores strength as f32, the way the native engine does", async () => {
+  it("stores strength as f32, which is what the blend reads", async () => {
     // The value reaches the blend as a weight, so it has to be f32: a double
     // 0.8 shifts the blend by ~1e-8 and moves samples at the quantisation
     // boundary.

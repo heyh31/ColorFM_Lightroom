@@ -4,8 +4,8 @@
  * The codec itself is sharp/libvips (`raster.ts`); this module keeps the 8-bit
  * RGB entry point and the 16-bit writer, which sharp cannot provide. 16-bit
  * output is what stores a model input for later reproduction, so it has to
- * survive a round trip — PNG is lossless, and the decoder narrows with the same
- * rounding the native build uses.
+ * survive a round trip — PNG is lossless, and the decoder narrows with the
+ * `(value + 128) / 257` rule stated in `raster.ts`.
  */
 
 import { encodePng16 as encodePng16Samples } from "./png16.js";

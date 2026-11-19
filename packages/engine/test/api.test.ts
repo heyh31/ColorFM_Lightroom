@@ -3,7 +3,7 @@
  * endpoints, exercised in-process so the assertions are about behaviour rather
  * than about a spawned process.
  *
- * Jobs that need the model are covered by the differential suite; here the
+ * Jobs that need the model are covered by the parallel suite; here the
  * pixel-free paths are checked, plus one cancelled job to prove the flag
  * reaches the worker.
  */
@@ -156,8 +156,8 @@ describe("lightroom sessions", () => {
 
   it("creates, claims, lists and cancels a session", async () => {
     const { api: running, root } = await api("api-session-flow");
-    // A real 16-bit TIFF is needed for the creation preview; the differential
-    // suite builds one, so here the failure path is what gets asserted.
+    // A real 16-bit TIFF is needed for the creation preview; the fixture
+    // builders cover that elsewhere, so here the failure path is asserted.
     const response = await call(running, "POST", "/v1/lightroom/sessions", {
       content_path: contentFile(root),
       label: "export.tiff",

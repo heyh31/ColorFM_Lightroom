@@ -430,7 +430,7 @@ function clampStrength(value: number): number {
   if (!Number.isFinite(value)) return 0;
   // Rounded to f32 because that is what the session stores and what the blend
   // consumes: keeping the double 0.8 here would shift every blend weight by
-  // ~1e-8 and flip a handful of 16-bit samples against the native build.
+  // ~1e-8, which is enough to move samples sitting on a quantisation boundary.
   return Math.fround(Math.min(MAX_STRENGTH, Math.max(0, value)));
 }
 

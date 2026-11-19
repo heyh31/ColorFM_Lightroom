@@ -1,13 +1,19 @@
 /**
- * Trilinear LUT lookup: single point, in place, batched and chunked.
+ * Trilinear LUT lookup: single point, in place, batched, chunked and fused.
  *
  * Interpolation is a gather plus eight weighted sums, so there is nothing to
  * factor out per batch beyond hoisting the table constants. Everything below
  * funnels into one range loop that allocates nothing per pixel and unrolls the
  * eight corners in accumulation order: a per-pixel helper call is measurably
  * slower, so the loop is written out instead of shared per point.
+ *
+ * The maths is double. The table is stored as `Float32Array` (24-bit mantissa,
+ * far finer than the 16-bit samples it feeds) and samples are quantised once on
+ * the way out, so precision is reduced at the edges of the pipeline rather than
+ * at every multiply.
  */
 
+import { clamp01, quantizeU16, toUnit } from "../float32.js";
 import type { RGB } from "../mlp.js";
 import type { Lut3D } from "./table.js";
 
@@ -53,7 +59,90 @@ export function applyInPlaceStrength(lut: Lut3D, pixels: Float32Array, strength:
   transformRange(lut, pixels, 0, pixels.length);
   for (let i = 0; i < pixels.length; i += 1) {
     const src = source[i];
-    pixels[i] = Math.fround(src + Math.fround(Math.fround(pixels[i] - src) * t));
+    pixels[i] = src + (pixels[i] - src) * t;
+  }
+}
+
+/**
+ * Fused lookup for 16-bit samples: codes in, codes out, one traversal.
+ *
+ * The three-pass form — widen to floats, look up, quantise — touches a 5 MB
+ * block three times. Here each sample is widened with one multiply, looked up,
+ * blended and quantised in place, so the block is read and written once.
+ * `strength` follows the same `src + (mapped - src) * t` curve as
+ * {@link applyInPlaceStrength}.
+ */
+export function applyInPlaceU16(lut: Lut3D, samples: Uint16Array, strength = 1): void {
+  const t = clamp01(strength);
+  if (t <= 0) return;
+
+  const size = lut.size;
+  const data = lut.data;
+  const scale = size - 1;
+  const last = size - 2;
+  const strideR = 3;
+  const strideG = size * 3;
+  const strideB = size * size * 3;
+  const blend = t < 1;
+
+  for (let p = 0; p < samples.length; p += 3) {
+    const r = toUnit(samples[p]);
+    const g = toUnit(samples[p + 1]);
+    const b = toUnit(samples[p + 2]);
+
+    const pr = (r > 1 ? 1 : r) * scale;
+    const pg = (g > 1 ? 1 : g) * scale;
+    const pb = (b > 1 ? 1 : b) * scale;
+
+    let i0 = pr | 0;
+    let i1 = pg | 0;
+    let i2 = pb | 0;
+    if (i0 > last) i0 = last;
+    if (i1 > last) i1 = last;
+    if (i2 > last) i2 = last;
+
+    const f0 = pr - i0;
+    const f1 = pg - i1;
+    const f2 = pb - i2;
+    const g0 = 1 - f0;
+    const g1 = 1 - f1;
+    const g2 = 1 - f2;
+
+    const w000 = g0 * g1 * g2;
+    const w100 = f0 * g1 * g2;
+    const w010 = g0 * f1 * g2;
+    const w110 = f0 * f1 * g2;
+    const w001 = g0 * g1 * f2;
+    const w101 = f0 * g1 * f2;
+    const w011 = g0 * f1 * f2;
+    const w111 = f0 * f1 * f2;
+
+    const base = i2 * strideB + i1 * strideG + i0 * strideR;
+    const a = base;
+    const b0 = base + strideR;
+    const c0 = base + strideG;
+    const d0 = base + strideG + strideR;
+    const e0 = base + strideB;
+    const f = base + strideB + strideR;
+    const g3 = base + strideB + strideG;
+    const h = base + strideB + strideG + strideR;
+
+    let red = w000 * data[a] + w100 * data[b0] + w010 * data[c0] + w110 * data[d0];
+    red += w001 * data[e0] + w101 * data[f] + w011 * data[g3] + w111 * data[h];
+    let green = w000 * data[a + 1] + w100 * data[b0 + 1] + w010 * data[c0 + 1] + w110 * data[d0 + 1];
+    green += w001 * data[e0 + 1] + w101 * data[f + 1] + w011 * data[g3 + 1] + w111 * data[h + 1];
+    let blue = w000 * data[a + 2] + w100 * data[b0 + 2] + w010 * data[c0 + 2] + w110 * data[d0 + 2];
+    blue += w001 * data[e0 + 2] + w101 * data[f + 2] + w011 * data[g3 + 2] + w111 * data[h + 2];
+
+    if (blend) {
+      red = r + (red - r) * t;
+      green = g + (green - g) * t;
+      blue = b + (blue - b) * t;
+    }
+
+    samples[p] = quantizeU16(red);
+    samples[p + 1] = quantizeU16(green);
+    samples[p + 2] = quantizeU16(blue);
   }
 }
 
@@ -102,12 +191,12 @@ export function applyParallel(lut: Lut3D, samples: Float32Array, threads: number
  * The cell is located by clamping to `[0,1]`, scaling by `size - 1` and taking
  * the integer part; the fraction feeds the eight corner weights. Products and
  * accumulation keep the same order as the mathematical definition, so the
- * unrolling cannot change a single bit.
+ * unrolling cannot change the result.
  */
 function transformRange(lut: Lut3D, pixels: Float32Array, start: number, end: number): void {
   const size = lut.size;
   const data = lut.data;
-  const scale = Math.fround(size - 1);
+  const scale = size - 1;
   const last = size - 2;
   const strideR = 3;
   const strideG = size * 3;
@@ -122,9 +211,9 @@ function transformRange(lut: Lut3D, pixels: Float32Array, start: number, end: nu
     const cr = r > 0 ? (r > 1 ? 1 : r) : 0;
     const cg = g > 0 ? (g > 1 ? 1 : g) : 0;
     const cb = b > 0 ? (b > 1 ? 1 : b) : 0;
-    const pr = Math.fround(cr * scale);
-    const pg = Math.fround(cg * scale);
-    const pb = Math.fround(cb * scale);
+    const pr = cr * scale;
+    const pg = cg * scale;
+    const pb = cb * scale;
 
     // grid cells are non-negative and below `size`, so truncation is flooring
     let i0 = pr | 0;
@@ -134,76 +223,41 @@ function transformRange(lut: Lut3D, pixels: Float32Array, start: number, end: nu
     if (i1 > last) i1 = last;
     if (i2 > last) i2 = last;
 
-    const f0 = Math.fround(pr - i0);
-    const f1 = Math.fround(pg - i1);
-    const f2 = Math.fround(pb - i2);
-    const g0 = Math.fround(1 - f0);
-    const g1 = Math.fround(1 - f1);
-    const g2 = Math.fround(1 - f2);
+    const f0 = pr - i0;
+    const f1 = pg - i1;
+    const f2 = pb - i2;
+    const g0 = 1 - f0;
+    const g1 = 1 - f1;
+    const g2 = 1 - f2;
 
-    const w000 = Math.fround(Math.fround(g0 * g1) * g2);
-    const w100 = Math.fround(Math.fround(f0 * g1) * g2);
-    const w010 = Math.fround(Math.fround(g0 * f1) * g2);
-    const w110 = Math.fround(Math.fround(f0 * f1) * g2);
-    const w001 = Math.fround(Math.fround(g0 * g1) * f2);
-    const w101 = Math.fround(Math.fround(f0 * g1) * f2);
-    const w011 = Math.fround(Math.fround(g0 * f1) * f2);
-    const w111 = Math.fround(Math.fround(f0 * f1) * f2);
+    const w000 = g0 * g1 * g2;
+    const w100 = f0 * g1 * g2;
+    const w010 = g0 * f1 * g2;
+    const w110 = f0 * f1 * g2;
+    const w001 = g0 * g1 * f2;
+    const w101 = f0 * g1 * f2;
+    const w011 = g0 * f1 * f2;
+    const w111 = f0 * f1 * f2;
 
     const base = i2 * strideB + i1 * strideG + i0 * strideR;
-    let red = 0;
-    let green = 0;
-    let blue = 0;
-    let at = base;
+    const a = base;
+    const b0 = base + strideR;
+    const c0 = base + strideG;
+    const d0 = base + strideG + strideR;
+    const e0 = base + strideB;
+    const f = base + strideB + strideR;
+    const g3 = base + strideB + strideG;
+    const h = base + strideB + strideG + strideR;
 
-    red = Math.fround(red + Math.fround(w000 * data[at]));
-    green = Math.fround(green + Math.fround(w000 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w000 * data[at + 2]));
-
-    at = base + strideR;
-    red = Math.fround(red + Math.fround(w100 * data[at]));
-    green = Math.fround(green + Math.fround(w100 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w100 * data[at + 2]));
-
-    at = base + strideG;
-    red = Math.fround(red + Math.fround(w010 * data[at]));
-    green = Math.fround(green + Math.fround(w010 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w010 * data[at + 2]));
-
-    at = base + strideG + strideR;
-    red = Math.fround(red + Math.fround(w110 * data[at]));
-    green = Math.fround(green + Math.fround(w110 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w110 * data[at + 2]));
-
-    at = base + strideB;
-    red = Math.fround(red + Math.fround(w001 * data[at]));
-    green = Math.fround(green + Math.fround(w001 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w001 * data[at + 2]));
-
-    at = base + strideB + strideR;
-    red = Math.fround(red + Math.fround(w101 * data[at]));
-    green = Math.fround(green + Math.fround(w101 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w101 * data[at + 2]));
-
-    at = base + strideB + strideG;
-    red = Math.fround(red + Math.fround(w011 * data[at]));
-    green = Math.fround(green + Math.fround(w011 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w011 * data[at + 2]));
-
-    at = base + strideB + strideG + strideR;
-    red = Math.fround(red + Math.fround(w111 * data[at]));
-    green = Math.fround(green + Math.fround(w111 * data[at + 1]));
-    blue = Math.fround(blue + Math.fround(w111 * data[at + 2]));
+    let red = w000 * data[a] + w100 * data[b0] + w010 * data[c0] + w110 * data[d0];
+    red += w001 * data[e0] + w101 * data[f] + w011 * data[g3] + w111 * data[h];
+    let green = w000 * data[a + 1] + w100 * data[b0 + 1] + w010 * data[c0 + 1] + w110 * data[d0 + 1];
+    green += w001 * data[e0 + 1] + w101 * data[f + 1] + w011 * data[g3 + 1] + w111 * data[h + 1];
+    let blue = w000 * data[a + 2] + w100 * data[b0 + 2] + w010 * data[c0 + 2] + w110 * data[d0 + 2];
+    blue += w001 * data[e0 + 2] + w101 * data[f + 2] + w011 * data[g3 + 2] + w111 * data[h + 2];
 
     pixels[p] = red;
     pixels[p + 1] = green;
     pixels[p + 2] = blue;
   }
-}
-
-/** `f32::clamp(0, 1)`, with NaN mapped to 0. */
-function clamp01(value: number): number {
-  const v = Math.fround(value);
-  if (!(v > 0)) return 0;
-  return v > 1 ? 1 : v;
 }

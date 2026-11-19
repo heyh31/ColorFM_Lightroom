@@ -2,8 +2,8 @@
  * Points `models/colorfm_l.onnx` at the checkpoint without copying 118 MB into
  * this repository.
  *
- * The engine looks for the graph in `models/`, then falls back to the reference
- * checkout. The symlink makes the first location work for `tauri build`, which
+ * The source is `COLORFM_MODEL`, defaulting to `models/colorfm_l.onnx` in a
+ * sibling directory. The symlink makes `models/` work for `tauri build`, which
  * copies the file into the app bundle instead of following it at run time.
  */
 
@@ -13,10 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = join(root, "models", "colorfm_l.onnx");
-const sources = [
-  process.env.COLORFM_MODEL,
-  join(root, "..", "colorfm-lightroom-rs", "models", "colorfm_l.onnx"),
-].filter((path) => typeof path === "string" && path.length > 0);
+const sources = [process.env.COLORFM_MODEL, join(root, "models", "colorfm_l.onnx.src")].filter(
+  (path) => typeof path === "string" && path.length > 0,
+);
 
 mkdirSync(join(root, "models"), { recursive: true });
 

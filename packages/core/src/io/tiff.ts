@@ -24,7 +24,7 @@
 import { closeSync, copyFileSync, openSync, realpathSync, writeSync } from "node:fs";
 
 import { ColorfmError } from "../error.js";
-import { quantizeU16, U16_TO_UNIT } from "../float32.js";
+import { quantizeU16, toUnit } from "../float32.js";
 import { Rgb16TiffWriter, TiffReader } from "./codec/tiff.js";
 
 /** Rows per output strip. 64 rows of 8K RGB is about 3 MB of f32 buffer. */
@@ -53,7 +53,17 @@ export interface CancelToken {
 export const NEVER_CANCELED: CancelToken = { canceled: false };
 
 /** Pixels of one strip, interleaved RGB, sRGB-encoded, values in `[0,1]`. */
-export type StripTransform = (pixels: Float32Array) => void;
+export type StripTransform = {
+  (pixels: Float32Array): void;
+  /**
+   * Optional fused path: transform 16-bit samples in place.
+   *
+   * When present the caller skips the float buffer entirely — codes are widened,
+   * looked up, blended and quantised in one traversal. Only valid for the
+   * little-endian uncompressed layout, which the caller checks.
+   */
+  applyU16?: (samples: Uint16Array) => void;
+};
 
 /** A contiguous run of strips: the unit of parallel work. */
 /**
@@ -315,6 +325,7 @@ function replaceRows(
   }
 
   let scratch = new Float32Array(0);
+  let writeBuffer = Buffer.alloc(0);
 
   try {
     let row = band.firstRow;
@@ -333,24 +344,38 @@ function replaceRows(
       const bytes = reader.readStripBytes(strip, inStrip, take);
       const aligned = littleEndian && bytes.byteOffset % 2 === 0 && bytes.length === count * 2;
 
+      // Fused path: codes in, codes out, one traversal, no float buffer.
+      if (transformFn.applyU16 && aligned) {
+        const samples = new Uint16Array(bytes.buffer, bytes.byteOffset, count);
+        transformFn.applyU16(samples);
+        writeFully(
+          fd,
+          Buffer.from(bytes.buffer, bytes.byteOffset, count * 2),
+          layout.offsets[strip] + inStrip * rowBytes,
+        );
+        row += take;
+        continue;
+      }
+
       // One scratch buffer per band: a 64-row block is 5 MB, and allocating it
       // per block would zero 390 MB over a 32 MP frame.
       if (scratch.length < count) scratch = new Float32Array(count);
       const pixels = scratch.subarray(0, count);
       if (aligned) {
         const samples = new Uint16Array(bytes.buffer, bytes.byteOffset, count);
-        for (let i = 0; i < count; i += 1) pixels[i] = U16_TO_UNIT[samples[i]];
+        for (let i = 0; i < count; i += 1) pixels[i] = toUnit(samples[i]);
       } else {
         for (let i = 0; i < count; i += 1) {
           const at = i * 2;
           const value = littleEndian ? bytes[at] | (bytes[at + 1] << 8) : (bytes[at] << 8) | bytes[at + 1];
-          pixels[i] = U16_TO_UNIT[value];
+          pixels[i] = toUnit(value);
         }
       }
 
       transformFn(pixels);
 
-      const buffer = Buffer.allocUnsafe(count * 2);
+      if (writeBuffer.length < count * 2) writeBuffer = Buffer.allocUnsafe(count * 2);
+      const buffer = writeBuffer;
       if (littleEndian) {
         const out = new Uint16Array(buffer.buffer, buffer.byteOffset, count);
         for (let i = 0; i < count; i += 1) out[i] = quantizeU16(pixels[i]);
@@ -407,7 +432,7 @@ function reencode(
         const available = Math.floor((samples.length - offset) / 3);
         const take = Math.min(room, available);
         for (let i = 0; i < take * 3; i += 1) {
-          pending[filled * 3 + i] = U16_TO_UNIT[samples[offset + i]];
+          pending[filled * 3 + i] = toUnit(samples[offset + i]);
         }
         offset += take * 3;
         filled += take;

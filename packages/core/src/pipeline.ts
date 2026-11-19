@@ -6,7 +6,7 @@
  */
 
 import { ColorfmError } from "./error.js";
-import { applyInPlace, applyInPlaceStrength, bake, type Lut3D } from "./lut/index.js";
+import { applyInPlace, applyInPlaceStrength, applyInPlaceU16, bake, type Lut3D } from "./lut/index.js";
 import { transferBatch } from "./mlp.js";
 import type { Params } from "./params.js";
 import {
@@ -37,10 +37,14 @@ export function render(src: string, dst: string, params: Params, apply: Apply): 
 
 /** The LUT transform, with the strength folded into the per-pixel blend. */
 function lutTransform(table: Lut3D, strength: number): StripTransform {
-  return (pixels) => {
+  const fn: StripTransform = (pixels) => {
     if (strength === 1) applyInPlace(table, pixels);
     else applyInPlaceStrength(table, pixels, strength);
   };
+  // The fused form: 16-bit codes in and out, so a TIFF transform never
+  // materialises the block as floats.
+  fn.applyU16 = (samples) => applyInPlaceU16(table, samples, strength);
+  return fn;
 }
 
 /**
@@ -106,7 +110,7 @@ export function applyDirectWithCancelStrength(
   return transformWithCancel(src, dst, DEFAULT_BLOCK_ROWS, cancel, (pixels) => {
     const graded = transferBatch(params, pixels);
     for (let i = 0; i < pixels.length; i += 1) {
-      pixels[i] = Math.fround(pixels[i] + Math.fround(Math.fround(graded[i] - pixels[i]) * t));
+      pixels[i] = pixels[i] + (graded[i] - pixels[i]) * t;
     }
   });
 }
@@ -125,9 +129,8 @@ export function applyDirectWithCancel(
 
 /** `f32::clamp`, with NaN falling back to the low bound. */
 function clamp(value: number, low: number, high: number): number {
-  const v = Math.fround(value);
-  if (!(v >= low)) return low;
-  return v > high ? high : v;
+  if (!(value >= low)) return low;
+  return value > high ? high : value;
 }
 
 export { ColorfmError };

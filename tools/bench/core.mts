@@ -2,12 +2,10 @@
  * Core-level timings for the same two operations the engine leans on: baking a
  * 33³ table and applying it in place.
  *
- * The buffer is the same shape the reference harness uses (8 MP of RGB triples),
- * and the reported value is the minimum of five runs, so the two sides can be
- * compared directly:
+ * The buffer is 8 MP of RGB triples, and the reported value is the minimum of
+ * five runs:
  *
  *   npx tsx tools/bench/core.mts
- *   tools/reference/target/release/colorfm-reference bench request.json
  */
 
 import { readFileSync } from "node:fs";
@@ -35,8 +33,8 @@ function bestOf(fn: () => void): number {
   return best;
 }
 
-// One thread: `bake` is the whole grid, so this is the like-for-like number
-// against Rust's single-threaded `bake`.
+// One thread: `bake` evaluates the whole grid in this process, so this is the
+// single-core number for both stages.
 const bakeMs = bestOf(() => void bake(params, SIZE));
 const table = bake(params, SIZE);
 

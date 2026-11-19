@@ -81,7 +81,6 @@ COLORFM_HOME=/tmp/cf-home COLORFM_LIBRARY=/tmp/cf-lib \
 | `npm run build` | 编译两个包及其声明文件 |
 | `npm run clean` | 删除编译产物和增量缓存 |
 | `npm test` | 类型检查源码与测试，然后跑完整套件 |
-| `npm run test:unit` | 只跑轻量子集，跳过端到端流程 |
 | `npm run typecheck` | `tsc -b`，再对测试文件做一次 no-emit 检查 |
 | `npm run dev:serve` | 用 `tsx` 直接从源码跑服务 |
 | `npm run colorfm -- --content a.tiff --style b.png --out c.tiff` | 一次性的调色 CLI |
@@ -118,8 +117,8 @@ COLORFM_HOME=/tmp/cf-home COLORFM_LIBRARY=/tmp/cf-lib \
 - 16-bit TIFF 的像素逐位往返；JPEG 只由平台解码器解一次，之后预览和渲染看到的是同一次
   解码结果，不会两边漂移。
 
-实测吞吐见 [docs/performance.md](docs/performance.md)（32 MP 渲染分带后约 1.0 秒，
-预览刷新约 0.2 秒）。
+实测吞吐见 [docs/performance.md](docs/performance.md)（32 MP 单帧端到端 1.5 秒，
+渲染分带后 0.73 秒）。
 
 ## 目录
 

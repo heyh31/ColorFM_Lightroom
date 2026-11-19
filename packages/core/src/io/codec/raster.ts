@@ -12,8 +12,8 @@
  * Two rules fix the decoded form:
  *
  * * pixels are sRGB, 8-bit, no alpha — the model's input domain;
- * * a 16-bit source is narrowed with `(value + 128) / 257`, the rounding the
- *   native build applies.
+ * * a 16-bit source is narrowed with `(value + 128) / 257` — round to nearest,
+ *   which is what the quantiser elsewhere in this package does.
  */
 
 import type { OutputInfo } from "sharp";
@@ -62,8 +62,8 @@ export async function decodeRgb8(source: string | Uint8Array): Promise<Rgb8Image
         : sharp(Buffer.from(source), { failOn: "error" });
 
     // `raw()` alone hands back 8 bits, letting libvips narrow a 16-bit source
-    // with its own rounding. Ask for the native depth instead and narrow here,
-    // so the values match the native build exactly.
+    // with its own rounding. Ask for the full depth instead and narrow here, so
+    // the rounding is the one rule stated above.
     const meta = await image.metadata();
     wide = meta.depth === "ushort";
 
@@ -84,7 +84,7 @@ export async function decodeRgb8(source: string | Uint8Array): Promise<Rgb8Image
   }
 
   if (wide) {
-    // 16-bit source: narrow with the same rounding the native build uses.
+    // 16-bit source: narrow with `(value + 128) / 257`.
     const count = info.width * info.height * 3;
     const narrow = new Uint8Array(count);
     for (let i = 0; i < count; i += 1) {

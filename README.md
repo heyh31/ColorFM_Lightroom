@@ -91,7 +91,6 @@ its home directory; every request needs `Authorization: Bearer <token>`.
 | `npm run build` | Compile both packages and their declarations |
 | `npm run clean` | Remove the compiled output and the incremental cache |
 | `npm test` | Type-check sources and tests, then run the whole suite |
-| `npm run test:unit` | A fast subset of the suite, skipping the end-to-end runs |
 | `npm run typecheck` | `tsc -b` plus a no-emit pass over the test files |
 | `npm run dev:serve` | Run the service from sources through `tsx` |
 | `npm run colorfm -- --content a.tiff --style b.png --out c.tiff` | One-shot grading CLI |
@@ -132,7 +131,7 @@ What that buys, checked by the test suite:
   and the render see the same decode, so they cannot drift apart.
 
 See [docs/performance.md](docs/performance.md) for measured throughput (32 MP
-render in 1.0 s banded across cores, preview refresh in 0.2 s).
+frame end to end in 1.5 s; a render in 0.73 s banded across cores).
 
 ## Layout
 

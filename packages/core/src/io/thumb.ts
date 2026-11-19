@@ -17,6 +17,7 @@
 import { closeSync, openSync, readSync, writeFileSync } from "node:fs";
 
 import { ColorfmError } from "../error.js";
+import { quantizeU16 } from "../float32.js";
 import { thumbOf, type Thumb } from "../infer/index.js";
 import { encodeJpeg as encodeJpegBuffer } from "./codec/jpeg.js";
 import { encodePng16 } from "./codec/png.js";
@@ -115,13 +116,13 @@ function resample8(
     for (let ox = 0; ox < outWidth; ox += 1) {
       const [x0, x1, fx] = axis(ox, outWidth, width);
       for (let k = 0; k < 3; k += 1) {
-        const a = Math.fround(buffer[(y0 * width + x0) * 3 + k] / 255);
-        const b = Math.fround(buffer[(y0 * width + x1) * 3 + k] / 255);
-        const c = Math.fround(buffer[(y1 * width + x0) * 3 + k] / 255);
-        const d = Math.fround(buffer[(y1 * width + x1) * 3 + k] / 255);
-        const top = Math.fround(a + Math.fround(Math.fround(b - a) * fx));
-        const bottom = Math.fround(c + Math.fround(Math.fround(d - c) * fx));
-        out[at + k] = Math.fround(top + Math.fround(Math.fround(bottom - top) * fy));
+        const a = buffer[(y0 * width + x0) * 3 + k] / 255;
+        const b = buffer[(y0 * width + x1) * 3 + k] / 255;
+        const c = buffer[(y1 * width + x0) * 3 + k] / 255;
+        const d = buffer[(y1 * width + x1) * 3 + k] / 255;
+        const top = a + (b - a) * fx;
+        const bottom = c + (d - c) * fx;
+        out[at + k] = top + (bottom - top) * fy;
       }
       at += 3;
     }
@@ -135,7 +136,7 @@ export async function savePng16(thumb: Thumb, path: string): Promise<void> {
   for (let i = 0; i < thumb.pixels.length; i += 1) {
     const value = thumb.pixels[i];
     const clamped = !(value > 0) ? 0 : value > 1 ? 1 : value;
-    samples[i] = Math.round(Math.fround(clamped * 65535));
+    samples[i] = quantizeU16(clamped);
   }
   writeFileSync(path, await encodePng16(thumb.width, thumb.height, samples));
 }
@@ -171,13 +172,13 @@ export function resampleTiff(src: string, outWidth: number, outHeight: number): 
       for (let ox = 0; ox < outWidth; ox += 1) {
         const [x0, x1, fx] = axis(ox, outWidth, width);
         for (let k = 0; k < 3; k += 1) {
-          const a = Math.fround(row0[x0 * 3 + k] / 65535);
-          const b = Math.fround(row0[x1 * 3 + k] / 65535);
-          const c = Math.fround(row1[x0 * 3 + k] / 65535);
-          const d = Math.fround(row1[x1 * 3 + k] / 65535);
-          const top = Math.fround(a + Math.fround(Math.fround(b - a) * fx));
-          const bottom = Math.fround(c + Math.fround(Math.fround(d - c) * fx));
-          out[at + k] = Math.fround(top + Math.fround(Math.fround(bottom - top) * fy));
+          const a = row0[x0 * 3 + k] / 65535;
+          const b = row0[x1 * 3 + k] / 65535;
+          const c = row1[x0 * 3 + k] / 65535;
+          const d = row1[x1 * 3 + k] / 65535;
+          const top = a + (b - a) * fx;
+          const bottom = c + (d - c) * fx;
+          out[at + k] = top + (bottom - top) * fy;
         }
         at += 3;
       }
@@ -194,13 +195,13 @@ export function resampleTiff(src: string, outWidth: number, outHeight: number): 
  * so the last output pixel never reads past the edge.
  */
 export function axis(dstIndex: number, dstSize: number, srcSize: number): [number, number, number] {
-  const scale = Math.fround(srcSize / dstSize);
-  const mapped = Math.fround(Math.fround(dstIndex + 0.5) * scale);
-  const raw = Math.fround(mapped - 0.5);
-  const position = Math.max(0, Math.min(raw, Math.fround(srcSize - 1)));
+  const scale = srcSize / dstSize;
+  const mapped = (dstIndex + 0.5) * scale;
+  const raw = mapped - 0.5;
+  const position = Math.max(0, Math.min(raw, srcSize - 1));
   const i0 = Math.floor(position);
   const i1 = Math.min(i0 + 1, srcSize - 1);
-  return [i0, i1, Math.fround(position - i0)];
+  return [i0, i1, position - i0];
 }
 
 /**

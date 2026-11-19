@@ -79,14 +79,13 @@ export function blendExtrapolate(a: Lut3D, b: Lut3D, t: number): Lut3D {
   const data = new Float32Array(a.data.length);
   for (let i = 0; i < a.data.length; i += 1) {
     const x = a.data[i];
-    data[i] = Math.fround(x + Math.fround(Math.fround(b.data[i] - x) * t));
+    data[i] = x + (b.data[i] - x) * t;
   }
   return { size: a.size, data };
 }
 
 /** `f32::clamp(0, 1)`, with NaN mapped to 0. */
 function clampUnit(value: number): number {
-  const v = Math.fround(value);
-  if (!(v > 0)) return 0;
-  return v > 1 ? 1 : v;
+  if (!(value > 0)) return 0;
+  return value > 1 ? 1 : value;
 }

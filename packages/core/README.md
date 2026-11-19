@@ -55,11 +55,10 @@ const thumb = await thumbnailAny("reference.jpg", INPUT_SIZE);  // decoding is a
 
 ## Throughput
 
-A 32.3 MP frame (`6960 x 4640`) renders in about 1.0 s with its rows banded
-across cores, and in 2.5 s on a single worker. A 33³ table bakes in ~120 ms and
-one core looks up around 31 Mpx/s, so an interactive preview change costs roughly
-0.2 s of pixel work. See [`docs/performance.md`](../../docs/performance.md) for
-the per-stage breakdown and how the hot loop is written.
+A 32.3 MP frame (`6960 x 4640`) renders in 0.73 s with its rows banded across
+cores, and in 1.3 s on a single worker. A 33³ table bakes in 76 ms and one core
+looks up around 48 Mpx/s. See [`docs/performance.md`](../../docs/performance.md)
+for the per-stage breakdown and how the hot loop is written.
 
 ## What this package is, and is not
 

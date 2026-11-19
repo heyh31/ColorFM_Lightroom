@@ -1,25 +1,24 @@
 /**
- * Cross-implementation benchmark: the same session run against two engines.
+ * End-to-end benchmark of the engine, driven over HTTP exactly as the desktop
+ * window and the Lightroom plug-in drive it.
  *
- * Both are driven over HTTP only, exactly as the desktop window and the
- * Lightroom plug-in drive them, so the numbers include the server, the worker
- * threads, the model run and the file I/O — not just the arithmetic.
+ * It builds its own 32 MP single-strip source — the shape Lightroom exports —
+ * so it needs no fixtures on disk. Each run gets a fresh home and library, and
+ * the reported value is the median over `--reps` runs.
  *
- *   npx tsx tools/bench/engine.mts [--content path] [--reference path] [--reps 3]
- *
- * Each engine gets a fresh home and library per repetition. The reported value
- * is the median, which is what matters on a machine that is doing other things.
+ *   npx tsx tools/bench/engine.mts [--reps 3] [--width 6960] [--height 4640]
+ *                                        [--workers 1,2,4,6,8]
  */
 
-import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { Rgb16TiffWriter } from "../../packages/core/src/io/codec/tiff.js";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const RUST = resolve(ROOT, "../colorfm-lightroom-rs/target/release/colorfm-engine");
 const MODEL = join(ROOT, "models/colorfm_l.onnx");
 
 function arg(name: string, fallback: string): string {
@@ -27,13 +26,18 @@ function arg(name: string, fallback: string): string {
   return index === -1 ? fallback : (process.argv[index + 1] ?? fallback);
 }
 
-const CONTENT = resolve(arg("content", "/tmp/mp32.tiff"));
-const REFERENCE = resolve(arg("reference", "/tmp/bench-ref.tiff"));
 const REPS = Number(arg("reps", "3"));
+const WIDTH = Number(arg("width", "6960"));
+const HEIGHT = Number(arg("height", "4640"));
+const WORKERS = arg("workers", "8,1")
+  .split(",")
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isFinite(value) && value > 0);
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 interface Engine {
   child: ChildProcess;
-  /** Milliseconds from spawn to the first healthy response. */
   boot: number;
   call(method: string, path: string, body?: unknown): Promise<any>;
   stop(): Promise<void>;
@@ -46,72 +50,98 @@ interface Sample {
   previewWarm: number;
   render: number;
   total: number;
-  /** Wall time inside each stage of the preview job, and of the render job. */
-  previewStages: Map<string, number>;
   renderStages: Map<string, number>;
-  digest: string;
+  bytes: number;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** A deterministic 16-bit frame with enough structure to resist compression. */
+function writeSource(path: string): void {
+  // One strip for the whole frame, which is what a Lightroom export looks like.
+  const writer = new Rgb16TiffWriter(path, WIDTH, HEIGHT, HEIGHT);
+  const samples = new Uint16Array(WIDTH * HEIGHT * 3);
+  for (let y = 0; y < HEIGHT; y += 1) {
+    for (let x = 0; x < WIDTH; x += 1) {
+      const at = (y * WIDTH + x) * 3;
+      samples[at] = (x * 65535) / (WIDTH - 1);
+      samples[at + 1] = (y * 65535) / (HEIGHT - 1);
+      samples[at + 2] = (x * 131 + y * 977) % 65536;
+    }
+  }
+  writer.writeStrip(samples);
+  writer.finish();
+}
 
-async function launch(command: string, args: string[], env: Record<string, string>): Promise<Engine> {
+/** Starts one engine with a throwaway home and library. */
+async function startEngine(workers: number): Promise<Engine> {
+  const home = mkdtempSync(join(tmpdir(), "cf-bench-home-"));
+  const library = mkdtempSync(join(tmpdir(), "cf-bench-lib-"));
+  const child = spawn(
+    process.execPath,
+    [join(ROOT, "packages/engine/dist/main.js"), "serve", "--port", "0", "--idle-exit", "0"],
+    {
+      env: {
+        ...process.env,
+        COLORFM_HOME: home,
+        COLORFM_LIBRARY: library,
+        COLORFM_MODEL: MODEL,
+        COLORFM_WORKERS: String(workers),
+      },
+      stdio: ["ignore", "ignore", "inherit"],
+    },
+  );
+
   const started = performance.now();
-  const child = spawn(command, args, {
-    env: { ...process.env, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let stderr = "";
-  child.stderr?.on("data", (d) => {
-    stderr += String(d);
-  });
-
-  const discovery = join(env.COLORFM_HOME, "engine.json");
-  let info: { http_port: number; token: string } | undefined;
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
+  let port = 0;
+  let token = "";
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     try {
-      const text = readFileSync(discovery, "utf8");
-      const parsed = JSON.parse(text);
-      const probe = await fetch(`http://127.0.0.1:${parsed.http_port}/v1/health`, {
-        headers: { authorization: `Bearer ${parsed.token}` },
-      }).catch(() => undefined);
+      const info = JSON.parse(readFileSync(join(home, "engine.json"), "utf8")) as {
+        http_port: number;
+        token: string;
+      };
+      const probe = await fetch(`http://127.0.0.1:${info.http_port}/v1/health`, {
+        headers: { authorization: `Bearer ${info.token}` },
+      }).catch(() => null);
       if (probe?.ok) {
-        info = parsed;
+        port = info.http_port;
+        token = info.token;
         break;
       }
     } catch {
-      // Not written yet, or half-written: retry.
+      // Discovery file not written yet.
     }
     await sleep(20);
   }
-  if (!info) throw new Error(`engine did not start: ${stderr.slice(-400)}`);
-  const boot = performance.now() - started;
+  if (!port) throw new Error("engine never became healthy");
 
-  const base = `http://127.0.0.1:${info.http_port}`;
+  const boot = performance.now() - started;
+  const call = async (method: string, path: string, body?: unknown): Promise<any> => {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return response.json();
+  };
+
   return {
     child,
     boot,
-    async call(method, path, body) {
-      const response = await fetch(base + path, {
-        method,
-        headers: { authorization: `Bearer ${info!.token}`, "content-type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      const json: any = await response.json();
-      return { ...json, status: response.status };
-    },
+    call,
     async stop() {
       child.kill("SIGTERM");
-      await new Promise<void>((r) => child.once("exit", () => r()));
+      await new Promise((done) => child.once("exit", done));
+      rmSync(home, { recursive: true, force: true });
+      rmSync(library, { recursive: true, force: true });
     },
-  } as Engine;
+  };
 }
 
 /** Polls a job at 10 ms, recording when each stage began. */
 async function waitJob(
   engine: Engine,
   id: string,
-): Promise<{ ms: number; stages: Map<string, number>; state: string; error?: unknown }> {
+): Promise<{ ms: number; stages: Map<string, number>; state: string }> {
   const started = performance.now();
   const seen: { stage: string; at: number }[] = [];
   for (;;) {
@@ -121,181 +151,126 @@ async function waitJob(
     }
     if (["done", "error", "canceled"].includes(data.state)) {
       const ms = performance.now() - started;
-      // A stage lasts until the next one starts; the last runs to completion.
       const stages = new Map<string, number>();
       seen.forEach((entry, index) => {
         const until = index + 1 < seen.length ? seen[index + 1].at : ms;
         stages.set(entry.stage, (stages.get(entry.stage) ?? 0) + (until - entry.at));
       });
-      return { ms, stages, state: data.state, error: data.error };
+      return { ms, stages, state: data.state };
     }
     await sleep(10);
   }
 }
 
-async function runOnce(label: string, env: Record<string, string>): Promise<Sample> {
-  const engine = await launch(
-    label === "rust" ? RUST : process.execPath,
-    label === "rust"
-      ? ["serve", "--port", "0", "--model", MODEL, "--idle-exit", "0"]
-      : [join(ROOT, "packages/engine/dist/main.js"), "serve", "--port", "0", "--idle-exit", "0"],
-    env,
-  );
+async function runOnce(engine: Engine, content: string, reference: string): Promise<Sample> {
+  const createStarted = performance.now();
+  const created = await engine.call("POST", "/v1/lightroom/sessions", {
+    content_path: content,
+    label: "bench.tif",
+    strength: 1,
+  });
+  const id = created.data.session.id as string;
+  const create = performance.now() - createStarted;
 
-  try {
-    let t = performance.now();
-    const created = await engine.call("POST", "/v1/lightroom/sessions", {
-      content_path: CONTENT,
-      label: "bench.tif",
-      strength: 1,
-    });
-    if (!created.ok) throw new Error(`create: ${JSON.stringify(created.error)}`);
-    const create = performance.now() - t;
-    const id = created.data.session.id;
+  await engine.call("POST", `/v1/lightroom/sessions/${id}/claim`);
 
-    await engine.call("POST", `/v1/lightroom/sessions/${id}/claim`);
+  const previewStarted = performance.now();
+  const preview = await engine.call("POST", `/v1/lightroom/sessions/${id}/preview`, {
+    reference_path: reference,
+    strength: 0.8,
+  });
+  const previewJob = await waitJob(engine, preview.data.session.preview_job_id);
+  const previewCold = performance.now() - previewStarted;
 
-    t = performance.now();
-    const preview = await engine.call("POST", `/v1/lightroom/sessions/${id}/preview`, {
-      reference_path: REFERENCE,
-      strength: 0.8,
-    });
-    const previewJob = await waitJob(engine, String(preview.data.session.preview_job_id));
-    if (previewJob.state !== "done") throw new Error(`preview: ${JSON.stringify(previewJob.error)}`);
-    const previewCold = previewJob.ms;
+  const warmStarted = performance.now();
+  const warm = await engine.call("POST", `/v1/lightroom/sessions/${id}/preview`, { strength: 0.8 });
+  await waitJob(engine, warm.data.session.preview_job_id);
+  const previewWarm = performance.now() - warmStarted;
 
-    t = performance.now();
-    const again = await engine.call("POST", `/v1/lightroom/sessions/${id}/preview`, {
-      reference_path: REFERENCE,
-      strength: 0.5,
-    });
-    const warmJob = await waitJob(engine, String(again.data.session.preview_job_id));
-    if (warmJob.state !== "done") throw new Error(`preview 2: ${JSON.stringify(warmJob.error)}`);
-    const previewWarm = warmJob.ms;
+  const renderStarted = performance.now();
+  const confirmed = await engine.call("POST", `/v1/lightroom/sessions/${id}/confirm`, { strength: 0.8 });
+  const renderJob = await waitJob(engine, confirmed.data.session.render_job_id);
+  const render = performance.now() - renderStarted;
+  if (renderJob.state !== "done") throw new Error(`render ended in ${renderJob.state}`);
 
-    t = performance.now();
-    const confirm = await engine.call("POST", `/v1/lightroom/sessions/${id}/confirm`, { strength: 0.8 });
-    if (!confirm.ok) throw new Error(`confirm: ${JSON.stringify(confirm.error)}`);
-    const renderJob = await waitJob(engine, String(confirm.data.session.render_job_id));
-    if (renderJob.state !== "done") throw new Error(`render: ${JSON.stringify(renderJob.error)}`);
-    const render = renderJob.ms;
+  const out = confirmed.data.session.output_path as string;
+  if (previewJob.state !== "done") throw new Error(`preview ended in ${previewJob.state}`);
 
-    const out = confirm.data.session.output_path as string;
-    const digest = createHash("sha256").update(readFileSync(out)).digest("hex").slice(0, 16);
-
-    // The cold run only: folding in the warm one would double-count the stages
-    // and make the parts add up to more than the job.
-    const previewStages = previewJob.stages;
-
-    return {
-      boot: engine.boot,
-      create,
-      previewCold,
-      previewWarm,
-      render,
-      total: engine.boot + create + previewCold + previewWarm + render,
-      previewStages,
-      renderStages: renderJob.stages,
-      digest,
-    };
-  } finally {
-    await engine.stop();
-  }
+  return {
+    boot: engine.boot,
+    create,
+    previewCold,
+    previewWarm,
+    render,
+    total: engine.boot + create + previewCold + previewWarm + render,
+    renderStages: renderJob.stages,
+    bytes: statSync(out).size,
+  };
 }
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
-const engines: { label: string; env: () => Record<string, string>; runs: Sample[] }[] = [
-  {
-    label: "ts (all cores)",
-    env: () => ({
-      COLORFM_HOME: mkdtempSync(join(tmpdir(), "cf-b-tsh-")),
-      COLORFM_LIBRARY: mkdtempSync(join(tmpdir(), "cf-b-tsl-")),
-      COLORFM_MODEL: MODEL,
-    }),
-    runs: [],
-  },
-  {
-    label: "ts (1 worker)",
-    env: () => ({
-      COLORFM_HOME: mkdtempSync(join(tmpdir(), "cf-b-ts1h-")),
-      COLORFM_LIBRARY: mkdtempSync(join(tmpdir(), "cf-b-ts1l-")),
-      COLORFM_MODEL: MODEL,
-      COLORFM_WORKERS: "1",
-    }),
-    runs: [],
-  },
-  {
-    label: "rust",
-    env: () => ({
-      COLORFM_HOME: mkdtempSync(join(tmpdir(), "cf-b-rsh-")),
-      COLORFM_LIBRARY: mkdtempSync(join(tmpdir(), "cf-b-rsl-")),
-    }),
-    runs: [],
-  },
-];
+async function main(): Promise<void> {
+  const scratch = mkdtempSync(join(tmpdir(), "cf-bench-src-"));
+  const content = join(scratch, "source.tiff");
+  const reference = join(scratch, "reference.tiff");
+  writeSource(content);
+  writeSource(reference);
+  console.log(`${WIDTH}x${HEIGHT}, ${(statSync(content).size / 1e6).toFixed(0)} MB, ${REPS} runs each\n`);
 
-if (!statSync(CONTENT).isFile()) throw new Error(`no content at ${CONTENT}`);
-if (!statSync(REFERENCE).isFile()) throw new Error(`no reference at ${REFERENCE}`);
+  const configs = WORKERS.map((workers) => ({
+    label: workers === 1 ? "1 worker" : `${workers} workers`,
+    workers,
+  }));
+  const results = new Map<string, Sample[]>();
 
-for (let rep = 0; rep < REPS; rep += 1) {
-  for (const engine of engines) {
-    const env = engine.env();
-    process.stderr.write(`rep ${rep + 1}/${REPS} ${engine.label} … `);
-    const sample = await runOnce(engine.label.startsWith("rust") ? "rust" : "ts", env);
-    engine.runs.push(sample);
-    for (const dir of [env.COLORFM_HOME, env.COLORFM_LIBRARY]) rmSync(dir, { recursive: true, force: true });
-    process.stderr.write(`${Math.round(sample.total)} ms\n`);
+  for (const config of configs) {
+    const runs: Sample[] = [];
+    for (let rep = 0; rep < REPS; rep += 1) {
+      const engine = await startEngine(config.workers);
+      try {
+        runs.push(await runOnce(engine, content, reference));
+      } finally {
+        await engine.stop();
+      }
+    }
+    results.set(config.label, runs);
   }
-}
 
-const steps: [keyof Sample, string][] = [
-  ["boot", "cold start → healthy"],
-  ["create", "create session (preview JPEG)"],
-  ["previewCold", "preview job (cold)"],
-  ["previewWarm", "preview job (cached params)"],
-  ["render", "render job → 16-bit TIFF"],
-  ["total", "sum of the above"],
-];
+  const width = 30;
+  const steps: { key: keyof Sample; label: string }[] = [
+    { key: "boot", label: "cold start → healthy" },
+    { key: "create", label: "create session (preview JPEG)" },
+    { key: "previewCold", label: "preview job (cold)" },
+    { key: "previewWarm", label: "preview job (cached params)" },
+    { key: "render", label: "render job → 16-bit TIFF" },
+    { key: "total", label: "whole session" },
+  ];
 
-const width = 30;
-console.log(`\n${"step".padEnd(width)}${engines.map((e) => e.label.padStart(16)).join("")}`);
-for (const [key, label] of steps) {
-  const cells = engines.map((e) => `${Math.round(median(e.runs.map((r) => Number(r[key]))))} ms`.padStart(16));
-  console.log(`${label.padEnd(width)}${cells.join("")}`);
-}
-console.log(`\nbaseline: rust = 1.00×; lower TS numbers are faster`);
-for (const step of ["previewCold", "render", "total"] as const) {
-  const rust = median(engines[2].runs.map((r) => Number(r[step])));
-  const cells = engines.map((e) => `${(median(e.runs.map((r) => Number(r[step]))) / rust).toFixed(2)}×`.padStart(16));
-  console.log(`${step.padEnd(width)}${cells.join("")}`);
-}
-function stageTable(title: string, pick: (s: Sample) => Map<string, number>, names: string[]): void {
-  console.log(`\n${title}`);
-  console.log(`${"stage".padEnd(width)}${engines.map((e) => e.label.padStart(16)).join("")}`);
-  for (const name of names) {
-    const cells = engines.map((e) => {
-      const values = e.runs.map((r) => pick(r).get(name) ?? 0);
-      const observed = values.some((v) => v > 0);
-      return (observed ? `${Math.round(median(values))} ms` : "—").padStart(16);
+  console.log(`${"step".padEnd(width)}${configs.map((c) => c.label.padStart(16)).join("")}`);
+  for (const step of steps) {
+    const cells = configs.map((c) => {
+      const values = (results.get(c.label) ?? []).map((r) => Number(r[step.key]));
+      return `${Math.round(median(values))} ms`.padStart(16);
     });
-    console.log(`${name.padEnd(width)}${cells.join("")}`);
+    console.log(`${step.label.padEnd(width)}${cells.join("")}`);
   }
+
+  if (configs.length > 1) {
+    console.log("");
+  }
+  for (const config of configs) {
+    const runs = results.get(config.label) ?? [];
+    const stages = runs[0]?.renderStages ?? new Map<string, number>();
+    const cells = [...stages.entries()].map(([stage, ms]) => `${stage} ${Math.round(ms)} ms`);
+    console.log(`\nrender stages, ${config.label}: ${cells.join("   ")}`);
+    console.log(`output: ${(runs[0].bytes / 1e6).toFixed(0)} MB`);
+  }
+
+  rmSync(scratch, { recursive: true, force: true });
 }
 
-stageTable("preview job, stage by stage (cold run)", (s) => s.previewStages, [
-  "thumbnail",
-  "params",
-  "bake",
-  "preview",
-  "encode",
-]);
-stageTable("render job, stage by stage", (s) => s.renderStages, ["thumbnail", "params", "bake", "apply"]);
-
-console.log(`\noutput sha256: ${engines.map((e) => `${e.label}=${e.runs[0].digest}`).join("  ")}`);
-const same = engines.every((e) => e.runs.every((r) => r.digest === engines[0].runs[0].digest));
-console.log(`identical pixels: ${same ? "yes" : "NO — the comparison is measuring different work"}`);
+await main();
