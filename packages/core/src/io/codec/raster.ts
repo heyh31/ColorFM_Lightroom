@@ -19,7 +19,7 @@
 import type { OutputInfo } from "sharp";
 
 import { ColorfmError } from "../../error.js";
-import { clamp01 } from "../../float32.js";
+import { clamp01 } from "../../samples.js";
 
 /**
  * sharp is loaded on first use, not at import time.

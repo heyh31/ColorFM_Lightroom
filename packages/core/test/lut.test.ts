@@ -23,7 +23,7 @@ import * as cube from "../src/lut/cube.js";
 import { transfer } from "../src/mlp.js";
 import { paramsFromSlice, zeroParams } from "../src/params.js";
 import { deterministicParams, firstDifference, sampleGrid } from "./helpers.js";
-import { quantizeU16, toUnit } from "../src/float32.js";
+import { quantizeU16, toUnit } from "../src/samples.js";
 
 const params = paramsFromSlice(deterministicParams());
 

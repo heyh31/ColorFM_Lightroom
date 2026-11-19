@@ -14,8 +14,8 @@ job worker.
 
 | Path | Responsibility |
 |---|---|
-| `src/float32.ts` | f32 rounding helpers, bit-exact `expf`, Swish |
-| `src/params.ts` | Parse/serialise `PARAMS_VALUES = 1248` f32 (content k1..k4 + style k1..k4) |
+| `src/samples.ts` | 16-bit code ↔ unit conversion, clamping, quantisation |
+| `src/params.ts` | Parse/serialise `PARAMS_VALUES = 1248` (content k1..k4 + style k1..k4) |
 | `src/mlp.ts` | Per-pixel MLP kernels: the model re-implemented in TypeScript |
 | `src/lut/` | 3D LUT: `table.ts` (type and blending), `bake.ts`, `apply.ts`, `cube.ts` |
 | `src/io/` | Streaming TIFF transform, thumbnails, previews; `codec/` holds the file formats |
@@ -78,7 +78,7 @@ threading here**: no worker pool, no `threads` argument, no core count. Deciding
 how many batches run at once, where the cuts go, which result to cache, and how
 a failure cancels its siblings all live in `packages/engine`.
 
-The rest stays internal — `float32`, `mlp`, `params` plumbing, the codecs and the
+The rest stays internal — `samples`, `mlp`, `params` plumbing, the codecs and the
 TIFF reader/writer. The tests import those by path; if a name has to travel
 through `index.ts` for a test to reach it, it is not part of the contract.
 

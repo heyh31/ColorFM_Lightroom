@@ -13,7 +13,7 @@
  * at every multiply.
  */
 
-import { clamp01, quantizeU16, toUnit } from "../float32.js";
+import { clamp01, quantizeU16, toUnit } from "../samples.js";
 import type { RGB } from "../mlp.js";
 import type { Lut3D } from "./table.js";
 

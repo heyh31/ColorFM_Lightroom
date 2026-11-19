@@ -34,6 +34,7 @@ const SURFACE = [
   "encodeJpeg",
   "fitWithin",
   "paramsFromSlice",
+  "paramsIntoBuffer",
   "paramsToVec",
   "prepareCopy",
   "preview",

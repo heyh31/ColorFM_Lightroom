@@ -9,7 +9,7 @@
 /** The step between two 16-bit codes. */
 export const UNIT_PER_CODE = 1 / 65535;
 
-/** A 16-bit code as a unit float. Exactly representable in both f32 and f64. */
+/** A 16-bit code as a unit value. */
 export function toUnit(code: number): number {
   return code * UNIT_PER_CODE;
 }

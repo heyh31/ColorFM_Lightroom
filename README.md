@@ -137,7 +137,7 @@ frame end to end in 1.5 s; a render in 0.73 s banded across cores).
 
 ```
 packages/core/src
-  float32.ts        f32 rounding helpers and expf
+  samples.ts        16-bit code <-> unit conversion, quantisation
   params.ts         the 1248-float kernel layout
   mlp.ts            the two residual MLPs, per point and per batch
   lut/              table type and blending, baking, lookup, .cube I/O

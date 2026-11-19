@@ -18,9 +18,9 @@
  *   time with the inner loop over the batch. Produces the same values as
  *   calling {@link transfer} per pixel; used by the LUT baker.
  *
- * The weights arrive as `Float32Array` (what the model emits) and the
- * arithmetic runs in double, so the only rounding is the one the model already
- * applied to its own weights.
+ * The weights arrive as rows of f32-precision numbers (what the model emits,
+ * see `Kernels`) and the arithmetic runs in double, so the only rounding is the
+ * one the model already applied to its own weights.
  */
 
 import { MAT_DIM, type Kernels, type Params } from "./params.js";
@@ -44,19 +44,13 @@ function swish(x: number): number {
 }
 
 /** `out = weights * input` for one layer, accumulating rows in ascending order. */
-function linear(
-  input: Float64Array,
-  inputCount: number,
-  weights: Float32Array,
-  outputCount: number,
-  out: Float64Array,
-): void {
-  for (let c = 0; c < outputCount; c += 1) out[c] = 0;
-  for (let r = 0; r < inputCount; r += 1) {
+function linear(input: ArrayLike<number>, weights: readonly number[][], out: Float64Array): void {
+  for (let c = 0; c < out.length; c += 1) out[c] = 0;
+  for (let r = 0; r < weights.length; r += 1) {
     const a = input[r];
-    const row = r * outputCount;
-    for (let c = 0; c < outputCount; c += 1) {
-      out[c] += a * weights[row + c];
+    const row = weights[r];
+    for (let c = 0; c < row.length; c += 1) {
+      out[c] += a * row[c];
     }
   }
 }
@@ -72,13 +66,13 @@ export function evalStage(kernels: Kernels, rgb: RGB, bias: number): RGB {
   inputScratch[2] = rgb[2];
   inputScratch[3] = bias;
 
-  linear(inputScratch, 4, kernels.k1, HIDDEN, hiddenA);
+  linear(inputScratch, kernels.k1, hiddenA);
   for (let i = 0; i < HIDDEN; i += 1) hiddenA[i] = swish(hiddenA[i]);
-  linear(hiddenA, HIDDEN, kernels.k2, HIDDEN, hiddenB);
+  linear(hiddenA, kernels.k2, hiddenB);
   for (let i = 0; i < HIDDEN; i += 1) hiddenB[i] = swish(hiddenB[i]);
-  linear(hiddenB, HIDDEN, kernels.k3, HIDDEN, hiddenA);
+  linear(hiddenB, kernels.k3, hiddenA);
   for (let i = 0; i < HIDDEN; i += 1) hiddenA[i] = swish(hiddenA[i]);
-  linear(hiddenA, HIDDEN, kernels.k4, 3, outScratch);
+  linear(hiddenA, kernels.k4, outScratch);
 
   return [outScratch[0], outScratch[1], outScratch[2]];
 }
@@ -91,21 +85,28 @@ export function transfer(params: Params, rgb: RGB): RGB {
   return [y1[0] - d2[0], y1[1] - d2[1], y1[2] - d2[2]];
 }
 
-/** One layer for a whole plane batch: `outputCount` planes of `count` values. */
+/**
+ * One layer for a whole plane batch: one plane per output row, `count` values
+ * each.
+ *
+ * The weight is read once per row and column and then reused across the batch,
+ * so the inner loop touches only contiguous buffers — the nested shape costs
+ * nothing here.
+ */
 function linearPlanes(
   inputs: readonly Float64Array[],
-  weights: Float32Array,
-  outputCount: number,
+  weights: readonly number[][],
   count: number,
 ): Float64Array[] {
+  const outputCount = weights[0].length;
   const outputs: Float64Array[] = [];
   for (let c = 0; c < outputCount; c += 1) outputs.push(new Float64Array(count));
 
-  for (let r = 0; r < inputs.length; r += 1) {
+  for (let r = 0; r < weights.length; r += 1) {
     const src = inputs[r];
-    const row = r * outputCount;
+    const row = weights[r];
     for (let c = 0; c < outputCount; c += 1) {
-      const weight = weights[row + c];
+      const weight = row[c];
       const dst = outputs[c];
       for (let i = 0; i < count; i += 1) {
         dst[i] += weight * src[i];
@@ -143,13 +144,13 @@ export function transferBatch(params: Params, pixels: Float32Array): Float32Arra
   }
 
   // Content stage: the constant channel is zero.
-  let hidden = linearPlanes([r, g, b, zeros], params.content.k1, HIDDEN, count);
+  let hidden = linearPlanes([r, g, b, zeros], params.content.k1, count);
   activatePlanes(hidden);
-  hidden = linearPlanes(hidden, params.content.k2, HIDDEN, count);
+  hidden = linearPlanes(hidden, params.content.k2, count);
   activatePlanes(hidden);
-  hidden = linearPlanes(hidden, params.content.k3, HIDDEN, count);
+  hidden = linearPlanes(hidden, params.content.k3, count);
   activatePlanes(hidden);
-  const d1 = linearPlanes(hidden, params.content.k4, 3, count);
+  const d1 = linearPlanes(hidden, params.content.k4, count);
 
   const y1 = [new Float64Array(count), new Float64Array(count), new Float64Array(count)];
   const base = [r, g, b];
@@ -162,13 +163,13 @@ export function transferBatch(params: Params, pixels: Float32Array): Float32Arra
 
   // Style stage: the constant channel is one.
   const ones = new Float64Array(count).fill(1);
-  hidden = linearPlanes([y1[0], y1[1], y1[2], ones], params.style.k1, HIDDEN, count);
+  hidden = linearPlanes([y1[0], y1[1], y1[2], ones], params.style.k1, count);
   activatePlanes(hidden);
-  hidden = linearPlanes(hidden, params.style.k2, HIDDEN, count);
+  hidden = linearPlanes(hidden, params.style.k2, count);
   activatePlanes(hidden);
-  hidden = linearPlanes(hidden, params.style.k3, HIDDEN, count);
+  hidden = linearPlanes(hidden, params.style.k3, count);
   activatePlanes(hidden);
-  const d2 = linearPlanes(hidden, params.style.k4, 3, count);
+  const d2 = linearPlanes(hidden, params.style.k4, count);
 
   for (let i = 0; i < count; i += 1) {
     out[i * 3] = y1[0][i] - d2[0][i];

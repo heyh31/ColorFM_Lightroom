@@ -124,7 +124,7 @@ COLORFM_HOME=/tmp/cf-home COLORFM_LIBRARY=/tmp/cf-lib \
 
 ```
 packages/core/src
-  float32.ts        f32 取整工具与 expf
+  samples.ts        16-bit code <-> 单位值换算与量化
   params.ts         1248 个 float 的核布局
   mlp.ts            两个残差 MLP，按点与按批
   lut/              表类型与混合、烘焙、查表、.cube 读写

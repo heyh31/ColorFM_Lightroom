@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 
-import { INPUT_SIZE, paramsFromSlice, type Params, type Thumb } from "@colorfm/core";
+import { INPUT_SIZE, paramsFromSlice, paramsIntoBuffer, type Params, type Thumb } from "@colorfm/core";
 
 import { planRenderBands, renderWorkerCount } from "./bands.js";
 import { EngineError, type WireError } from "./errors.js";
@@ -435,16 +435,7 @@ function clampStrength(value: number): number {
 }
 
 function toFloat32(params: Params): Float32Array {
-  const buffer = new Float32Array(1248);
-  const planes = [params.content, params.style];
-  let at = 0;
-  for (const kernels of planes) {
-    for (const matrix of [kernels.k1, kernels.k2, kernels.k3, kernels.k4]) {
-      buffer.set(matrix, at);
-      at += matrix.length;
-    }
-  }
-  return buffer;
+  return paramsIntoBuffer(params, new Float32Array(1248));
 }
 
 function stage(app: App, id: string, name: string, pct: number): void {

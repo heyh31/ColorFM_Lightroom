@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clamp01, quantizeU16, toUnit, UNIT_PER_CODE } from "../src/float32.js";
+import { clamp01, quantizeU16, toUnit, UNIT_PER_CODE } from "../src/samples.js";
 
 describe("unit conversion", () => {
   it("maps the ends of the 16-bit range exactly", () => {

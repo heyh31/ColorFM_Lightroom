@@ -82,6 +82,12 @@ Same process, 8 MP of RGB triples, best of five, one core:
 | bake a 33³ table | 76 ms | 36 k grid points |
 | LUT apply, 8 MP | 168 ms | 47.6 Mpx/s |
 
+The kernels are nested rows (`number[][]`, 4×16 and 16×16) rather than one flat
+buffer, and that costs nothing: the weight is hoisted out of the inner loop, so
+the layout only decides how one number is fetched per row and column. Measured
+against a flat `Float32Array` version in the same process, the nested form bakes
+a 33³ table in 0.93–0.97× the time and produces a bit-identical table.
+
 Reproduce both tables with:
 
 ```bash

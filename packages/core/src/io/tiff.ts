@@ -24,7 +24,7 @@
 import { closeSync, copyFileSync, openSync, realpathSync, writeSync } from "node:fs";
 
 import { ColorfmError } from "../error.js";
-import { quantizeU16, toUnit } from "../float32.js";
+import { quantizeU16, toUnit } from "../samples.js";
 import { Rgb16TiffWriter, TiffReader } from "./codec/tiff.js";
 
 /** Rows per output strip. 64 rows of 8K RGB is about 3 MB of f32 buffer. */

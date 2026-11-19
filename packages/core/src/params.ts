@@ -1,10 +1,10 @@
 /**
  * Grading parameters: the eight kernels the network predicts.
  *
- * One stage is `k1: 4x16, k2: 16x16, k3: 16x16, k4: 16x3`, stored flat and
- * row-major, 624 floats per stage and 1248 for a full set. The order is fixed
- * so the values can cross a process boundary, be cached in `params.bin` or be
- * pinned into a project file without a schema negotiation.
+ * One stage is `k1: 4x16, k2: 16x16, k3: 16x16, k4: 16x3`, 624 values per stage
+ * and 1248 for a full set. The order is fixed so the values can cross a process
+ * boundary, be cached in `params.bin` or be pinned into a project file without a
+ * schema negotiation.
  */
 
 import { ColorfmError } from "./error.js";
@@ -21,28 +21,36 @@ export const PARAMS_VALUES = KERNEL_VALUES * 2;
 /**
  * One stage of the transform.
  *
- * One `Float32Array` per matrix, flat and row-major: a write rounds to f32, so
- * the weights stay exactly what the model produced, and the same layout is used
- * by `params.bin`, the wire and `paramsIntoBuffer`.
+ * One array per row, row-major, so `k1` reads as four rows of sixteen. Values
+ * are f32-precision: every reader rounds with `Math.fround` on the way in, which
+ * is exactly what the model produced. The arithmetic after that runs in double,
+ * so the only rounding in the pipeline is the quantisation at the ends.
  */
 export interface Kernels {
-  /** 4 x 16, row-major. */
-  readonly k1: Float32Array;
-  /** 16 x 16, row-major. */
-  readonly k2: Float32Array;
-  /** 16 x 16, row-major. */
-  readonly k3: Float32Array;
-  /** 16 x 3, row-major. */
-  readonly k4: Float32Array;
+  /** 4 x 16. */
+  readonly k1: number[][];
+  /** 16 x 16. */
+  readonly k2: number[][];
+  /** 16 x 16. */
+  readonly k3: number[][];
+  /** 16 x 3. */
+  readonly k4: number[][];
+}
+
+/** `rowCount` rows of `cols` zeros. */
+function emptyMatrix(rowCount: number, cols: number): number[][] {
+  const rows: number[][] = [];
+  for (let r = 0; r < rowCount; r += 1) rows.push(new Array<number>(cols).fill(0));
+  return rows;
 }
 
 /** Kernels with every weight at zero: the transform is the identity. */
 export function zeroKernels(): Kernels {
   return {
-    k1: new Float32Array(4 * MAT_DIM),
-    k2: new Float32Array(MAT_DIM * MAT_DIM),
-    k3: new Float32Array(MAT_DIM * MAT_DIM),
-    k4: new Float32Array(MAT_DIM * 3),
+    k1: emptyMatrix(4, MAT_DIM),
+    k2: emptyMatrix(MAT_DIM, MAT_DIM),
+    k3: emptyMatrix(MAT_DIM, MAT_DIM),
+    k4: emptyMatrix(MAT_DIM, 3),
   };
 }
 
@@ -53,44 +61,43 @@ export function zeroKernels(): Kernels {
  */
 export function kernelsFromSlice(values: ArrayLike<number>, offset = 0): Kernels | undefined {
   if (values.length - offset < KERNEL_VALUES) return undefined;
-  const out = zeroKernels();
   let i = offset;
-  for (let r = 0; r < 4; r += 1) {
-    for (let c = 0; c < MAT_DIM; c += 1) {
-      out.k1[r * MAT_DIM + c] = values[i++];
+  // The single rounding point for the whole pipeline: everything downstream
+  // reads these cells and multiplies doubles.
+  const take = (rowCount: number, cols: number): number[][] => {
+    const rows: number[][] = [];
+    for (let r = 0; r < rowCount; r += 1) {
+      const row = new Array<number>(cols);
+      for (let c = 0; c < cols; c += 1) row[c] = Math.fround(values[i++]);
+      rows.push(row);
     }
-  }
-  for (const matrix of [out.k2, out.k3]) {
-    for (let r = 0; r < MAT_DIM; r += 1) {
-      for (let c = 0; c < MAT_DIM; c += 1) {
-        matrix[r * MAT_DIM + c] = values[i++];
-      }
-    }
-  }
-  for (let r = 0; r < MAT_DIM; r += 1) {
-    for (let c = 0; c < 3; c += 1) {
-      out.k4[r * 3 + c] = values[i++];
-    }
-  }
-  return out;
+    return rows;
+  };
+  return {
+    k1: take(4, MAT_DIM),
+    k2: take(MAT_DIM, MAT_DIM),
+    k3: take(MAT_DIM, MAT_DIM),
+    k4: take(MAT_DIM, 3),
+  };
 }
 
 /** Appends 624 floats in the same order {@link kernelsFromSlice} expects. */
 export function writeKernels(kernels: Kernels, out: number[]): void {
-  for (let i = 0; i < kernels.k1.length; i += 1) out.push(kernels.k1[i]);
-  for (const matrix of [kernels.k2, kernels.k3]) {
-    for (let i = 0; i < matrix.length; i += 1) out.push(matrix[i]);
+  for (const matrix of [kernels.k1, kernels.k2, kernels.k3, kernels.k4]) {
+    for (const row of matrix) {
+      for (let c = 0; c < row.length; c += 1) out.push(row[c]);
+    }
   }
-  for (let i = 0; i < kernels.k4.length; i += 1) out.push(kernels.k4[i]);
 }
 
 /** Deep copy, used where a caller must not see later mutation. */
 export function cloneKernels(kernels: Kernels): Kernels {
+  const copy = (matrix: number[][]): number[][] => matrix.map((row) => row.slice());
   return {
-    k1: kernels.k1.slice(),
-    k2: kernels.k2.slice(),
-    k3: kernels.k3.slice(),
-    k4: kernels.k4.slice(),
+    k1: copy(kernels.k1),
+    k2: copy(kernels.k2),
+    k3: copy(kernels.k3),
+    k4: copy(kernels.k4),
   };
 }
 
@@ -99,10 +106,15 @@ export function kernelsEqual(a: Kernels, b: Kernels): boolean {
   return sameValues(a.k1, b.k1) && sameValues(a.k2, b.k2) && sameValues(a.k3, b.k3) && sameValues(a.k4, b.k4);
 }
 
-function sameValues(a: Float32Array, b: Float32Array): boolean {
+function sameValues(a: number[][], b: number[][]): boolean {
   if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (!Object.is(a[i], b[i])) return false;
+  for (let r = 0; r < a.length; r += 1) {
+    const rowA = a[r];
+    const rowB = b[r];
+    if (rowA.length !== rowB.length) return false;
+    for (let c = 0; c < rowA.length; c += 1) {
+      if (!Object.is(rowA[c], rowB[c])) return false;
+    }
   }
   return true;
 }
@@ -142,8 +154,10 @@ export function paramsIntoBuffer(params: Params, out: Float32Array): Float32Arra
   let offset = 0;
   for (const kernels of [params.content, params.style]) {
     for (const matrix of [kernels.k1, kernels.k2, kernels.k3, kernels.k4]) {
-      out.set(matrix, offset);
-      offset += matrix.length;
+      for (const row of matrix) {
+        out.set(row, offset);
+        offset += row.length;
+      }
     }
   }
   return out;

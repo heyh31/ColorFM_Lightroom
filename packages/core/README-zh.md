@@ -12,8 +12,8 @@ writer，拿回值。全部同步、可取消，所以引擎能把它放进任�
 
 | 路径 | 职责 |
 |---|---|
-| `src/float32.ts` | f32 取整工具、逐位精确的 `expf`、Swish |
-| `src/params.ts` | 解析/序列化 `PARAMS_VALUES = 1248` 个 f32（content k1..k4 + style k1..k4） |
+| `src/samples.ts` | 16-bit code ↔ 单位值换算、钳制、量化 |
+| `src/params.ts` | 解析/序列化 `PARAMS_VALUES = 1248` 个值（content k1..k4 + style k1..k4） |
 | `src/mlp.ts` | 逐像素 MLP 核：用 TypeScript 重写的模型 |
 | `src/lut/` | 3D LUT：`table.ts`（类型与混合）、`bake.ts`、`apply.ts`、`cube.ts` |
 | `src/io/` | 流式 TIFF 变换、缩略图、预览；`codec/` 放各文件格式 |
@@ -70,7 +70,7 @@ const thumb = await thumbnailAny("reference.jpg", INPUT_SIZE);  // 解码是异�
 `threads` 参数、不数核。一次跑几个批量、切点在哪、缓存哪个结果、某个失败如何取消兄弟，
 全部在 `packages/engine` 里。
 
-其余部分保持内部——`float32`、`mlp`、`params` 的管线、各编解码器和 TIFF 读写器。
+其余部分保持内部——`samples`、`mlp`、`params` 的管线、各编解码器和 TIFF 读写器。
 测试直接按路径 import 它们；如果一个名字必须经过 `index.ts` 才能被测试用到，
 那它就不属于契约。
 

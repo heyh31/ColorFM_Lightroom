@@ -14,8 +14,8 @@
  *    path in and gets a value back, so the same code runs in a CLI, in a test
  *    and inside a job worker.
  *
- * Everything else stays internal to the package: the float32 helpers, the MLP
- * stages, the codecs and the TIFF reader/writer are implementation detail. The
+ * Everything else stays internal to the package: the sample-format helpers, the
+ * MLP stages, the codecs and the TIFF reader/writer are implementation detail. The
  * tests import them by path, which keeps that split honest — if a test needs a
  * name, it is not part of the contract.
  */
@@ -24,7 +24,7 @@ export { ColorfmError, type ColorfmErrorKind } from "./error.js";
 
 // --- parameters ------------------------------------------------------------
 // The 1248-float kernel set: the unit everything else is expressed in.
-export { PARAMS_VALUES, paramsFromSlice, paramsToVec, type Params } from "./params.js";
+export { PARAMS_VALUES, paramsFromSlice, paramsIntoBuffer, paramsToVec, type Params } from "./params.js";
 
 // --- 3D LUT ----------------------------------------------------------------
 // Baking is a batch over grid nodes; applying is a batch over pixels.

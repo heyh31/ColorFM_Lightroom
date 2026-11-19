@@ -17,7 +17,7 @@
 import { closeSync, openSync, readSync, writeFileSync } from "node:fs";
 
 import { ColorfmError } from "../error.js";
-import { quantizeU16 } from "../float32.js";
+import { quantizeU16 } from "../samples.js";
 import { thumbOf, type Thumb } from "../infer/index.js";
 import { encodeJpeg as encodeJpegBuffer } from "./codec/jpeg.js";
 import { encodePng16 } from "./codec/png.js";
