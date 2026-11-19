@@ -77,8 +77,9 @@ export function transform(
   dst: string,
   stripRows: number,
   transformFn: StripTransform,
+  timings?: StageTimings,
 ): ImageInfo {
-  return transformWithCancel(src, dst, stripRows, NEVER_CANCELED, transformFn);
+  return transformWithCancel(src, dst, stripRows, NEVER_CANCELED, transformFn, timings);
 }
 
 /**
@@ -93,6 +94,7 @@ export function transformWithCancel(
   stripRows: number,
   cancel: CancelToken,
   transformFn: StripTransform,
+  timings?: StageTimings,
 ): ImageInfo {
   if (!(stripRows > 0)) throw new RangeError("stripRows must be positive");
   if (cancel.canceled) throw ColorfmError.canceled();
@@ -122,7 +124,7 @@ export function transformWithCancel(
     if (band) {
       try {
         prepareCopy(src, dst, reader);
-        runRows(src, dst, stripRows, band, cancel, transformFn);
+        runRows(src, dst, stripRows, band, cancel, transformFn, timings);
         info.metadataPreserved = true;
         return info;
       } catch (error) {
@@ -209,13 +211,14 @@ export function runRows(
   band: RowBand,
   cancel: CancelToken,
   transformFn: StripTransform,
+  timings?: StageTimings,
 ): void {
   if (!(blockRows > 0)) throw new RangeError("blockRows must be positive");
   const reader = TiffReader.open(src);
   try {
     const layout = stripLayout(reader);
     if (!layout) throw ColorfmError.unsupported("source cannot be edited in place");
-    replaceRows(dst, reader, layout, band, blockRows, cancel, transformFn);
+    replaceRows(dst, reader, layout, band, blockRows, cancel, transformFn, timings);
   } finally {
     reader.close();
   }
@@ -240,6 +243,19 @@ function sameFile(src: string, dst: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Where the time goes in one transform, in milliseconds.
+ *
+ * `encode` covers widening, looking up, blending and quantising one block;
+ * `write` covers the `writeSync` calls that put it back. They are reported
+ * apart because they answer different questions — encode is arithmetic, write
+ * is the disk — and mixing them hides the second behind the first.
+ */
+export interface StageTimings {
+  encode: number;
+  write: number;
 }
 
 /** Where the pixel bytes live in a source we are allowed to edit in place. */
@@ -304,6 +320,7 @@ function replaceRows(
   blockRows: number,
   cancel: CancelToken,
   transformFn: StripTransform,
+  timings?: StageTimings,
 ): void {
   let fd: number;
   try {
@@ -347,16 +364,21 @@ function replaceRows(
       // Fused path: codes in, codes out, one traversal, no float buffer.
       if (transformFn.applyU16 && aligned) {
         const samples = new Uint16Array(bytes.buffer, bytes.byteOffset, count);
+        const encodeStart = timings ? performance.now() : 0;
         transformFn.applyU16(samples);
+        if (timings) timings.encode += performance.now() - encodeStart;
+        const writeStart = timings ? performance.now() : 0;
         writeFully(
           fd,
           Buffer.from(bytes.buffer, bytes.byteOffset, count * 2),
           layout.offsets[strip] + inStrip * rowBytes,
         );
+        if (timings) timings.write += performance.now() - writeStart;
         row += take;
         continue;
       }
 
+      const encodeStart = timings ? performance.now() : 0;
       // One scratch buffer per band: a 64-row block is 5 MB, and allocating it
       // per block would zero 390 MB over a 32 MP frame.
       if (scratch.length < count) scratch = new Float32Array(count);
@@ -382,7 +404,10 @@ function replaceRows(
       } else {
         for (let i = 0; i < count; i += 1) buffer.writeUInt16BE(quantizeU16(pixels[i]), i * 2);
       }
+      if (timings) timings.encode += performance.now() - encodeStart;
+      const writeStart = timings ? performance.now() : 0;
       writeFully(fd, buffer, layout.offsets[strip] + inStrip * rowBytes);
+      if (timings) timings.write += performance.now() - writeStart;
 
       row += take;
     }

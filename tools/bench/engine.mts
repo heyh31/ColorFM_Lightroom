@@ -227,17 +227,24 @@ async function main(): Promise<void> {
   }));
   const results = new Map<string, Sample[]>();
 
+  const rounds = new Map<string, number[]>();
   for (const config of configs) {
     const runs: Sample[] = [];
-    for (let rep = 0; rep < REPS; rep += 1) {
-      const engine = await startEngine(config.workers);
-      try {
+    // One engine for every rep: that is what makes the second render cheaper —
+    // the band pool and its JIT are already warm.
+    const engine = await startEngine(config.workers);
+    try {
+      for (let rep = 0; rep < REPS; rep += 1) {
         runs.push(await runOnce(engine, content, reference));
-      } finally {
-        await engine.stop();
       }
+    } finally {
+      await engine.stop();
     }
     results.set(config.label, runs);
+    rounds.set(
+      config.label,
+      runs.map((run) => Math.round(run.render)),
+    );
   }
 
   const width = 30;
@@ -259,8 +266,9 @@ async function main(): Promise<void> {
     console.log(`${step.label.padEnd(width)}${cells.join("")}`);
   }
 
-  if (configs.length > 1) {
-    console.log("");
+  console.log("");
+  for (const config of configs) {
+    console.log(`render by round, ${config.label}: ${(rounds.get(config.label) ?? []).join(" ms, ")} ms`);
   }
   for (const config of configs) {
     const runs = results.get(config.label) ?? [];

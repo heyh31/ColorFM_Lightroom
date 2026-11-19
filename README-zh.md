@@ -88,7 +88,8 @@ COLORFM_HOME=/tmp/cf-home COLORFM_LIBRARY=/tmp/cf-lib \
 | `npm run desktop:dev` | 先构建引擎，再起 Vite + 窗口 |
 | `npm run desktop:build` | 同上，并打包成 `.app` |
 | `npm run model:link` | 把权重软链到 `models/` |
-| `npm run bench:core` | 烘焙 / 查表吞吐，TypeScript 侧 |
+| `npm run bench:core` | 烘焙 / 查表吞吐，单核 |
+| `npm run bench:io` | 32 MP 单帧的复制、编码、写入分段耗时 |
 | `npm run bench:engine` | 整场会话的端到端耗时 |
 | `npm run desktop:web` | 只跑前端，在浏览器里（没有窗口 API） |
 
@@ -117,8 +118,8 @@ COLORFM_HOME=/tmp/cf-home COLORFM_LIBRARY=/tmp/cf-lib \
 - 16-bit TIFF 的像素逐位往返；JPEG 只由平台解码器解一次，之后预览和渲染看到的是同一次
   解码结果，不会两边漂移。
 
-实测吞吐见 [docs/performance.md](docs/performance.md)（32 MP 单帧端到端 1.5 秒，
-渲染分带后 0.73 秒）。
+实测吞吐见 [docs/performance.md](docs/performance.md)（32 MP 单帧端到端 1.0 秒，
+渲染分带后 0.38 秒）。
 
 ## 目录
 

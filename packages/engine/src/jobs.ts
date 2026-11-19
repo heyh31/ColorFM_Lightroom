@@ -12,6 +12,7 @@ import { Worker } from "node:worker_threads";
 import { INPUT_SIZE, paramsFromSlice, paramsIntoBuffer, type Params, type Thumb } from "@colorfm/core";
 
 import { planRenderBands, renderWorkerCount } from "./bands.js";
+import type { JobRequest } from "./worker.js";
 import { EngineError, type WireError } from "./errors.js";
 import type { App } from "./state.js";
 import { settle } from "./session.js";
@@ -445,13 +446,23 @@ function stage(app: App, id: string, name: string, pct: number): void {
   });
 }
 
+function noop(): void {}
+
+/** Task id for the reply that belongs to the job currently in flight. */
+let nextTaskId = 1;
+
 /**
- * Runs one task on a worker thread and resolves with its result.
+ * One job worker kept between tasks.
  *
- * A worker is spawned per task rather than kept in a pool: tasks are seconds
- * long, so a 40 ms start-up is noise, and a fresh worker cannot carry state
- * from a cancelled job into the next one.
+ * What is actually being kept warm is its band pool: those workers load the
+ * library once and then serve render after render. A task that arrives while
+ * this one is busy gets its own worker, so two jobs never share a thread — and
+ * a worker that failed or was cancelled is retired rather than reused, since it
+ * may be midway through a strip.
  */
+let idleJobWorker: Worker | undefined;
+
+/** Runs one task on a worker thread and resolves with its result. */
 function runWorker(
   jobId: string,
   app: App,
@@ -459,37 +470,60 @@ function runWorker(
   cancelBuffer: SharedArrayBuffer,
 ): Promise<{ result: unknown; table?: FlatTable }> {
   const entry = workerEntry("worker");
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(entry.url, {
-      workerData: { task, cancel: cancelBuffer },
-      ...(entry.execArgv ? { execArgv: entry.execArgv } : {}),
-    });
+  const reused = idleJobWorker;
+  idleJobWorker = undefined;
+  const worker = reused ?? new Worker(entry.url, { ...(entry.execArgv ? { execArgv: entry.execArgv } : {}) });
+  const id = nextTaskId++;
 
+  return new Promise((resolve, reject) => {
     let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      void worker.terminate().then(action, action);
+
+    const detach = (): void => {
+      worker.off("message", onMessage);
+      worker.off("error", onError);
+      worker.off("exit", onExit);
     };
 
-    worker.on("message", (message: WorkerMessage) => {
+    // `keep` is false whenever the thread may hold half-transformed state.
+    const finish = (keep: boolean, action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      detach();
+      if (keep && !idleJobWorker) {
+        worker.unref();
+        idleJobWorker = worker;
+      } else {
+        void worker.terminate().then(noop, noop);
+      }
+      action();
+    };
+
+    const onMessage = (message: WorkerMessage): void => {
+      if (message.id !== id) return;
       if (message.type === "stage") {
         stage(app, jobId, message.stage, message.pct);
       } else if (message.type === "done") {
-        finish(() => resolve({ result: message.result, table: message.table }));
+        finish(true, () => resolve({ result: message.result, table: message.table }));
       } else {
-        finish(() => reject(new EngineError(message.code as never, message.message)));
+        finish(false, () => reject(new EngineError(message.code as never, message.message)));
       }
-    });
-    worker.on("error", (error) => {
-      finish(() => reject(EngineError.io(error.message, error)));
-    });
-    worker.on("exit", (code) => {
+    };
+    const onError = (error: Error): void => {
+      finish(false, () => reject(EngineError.io(error.message, error)));
+    };
+    const onExit = (code: number): void => {
       // Settled covers the worker we terminated ourselves after its message.
       // Anything else means the job never reported an outcome, which must not
       // leave the record stuck in `running`.
       if (settled) return;
-      finish(() => reject(EngineError.internal(`job worker exited with ${code} before reporting`)));
-    });
+      settled = true;
+      if (idleJobWorker === worker) idleJobWorker = undefined;
+      reject(EngineError.internal(`job worker exited with ${code} before reporting`));
+    };
+
+    worker.on("message", onMessage);
+    worker.on("error", onError);
+    worker.on("exit", onExit);
+    worker.postMessage({ id, task, cancel: cancelBuffer } satisfies JobRequest);
   });
 }

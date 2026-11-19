@@ -31,6 +31,15 @@ describe("band planning", () => {
     expect(covered).toEqual(Array.from({ length: 4640 }, (_, index) => index));
   });
 
+  it("keeps a small frame on one thread", () => {
+    // 400 x 300 = 120k pixels: below the floor, so start-up would dominate.
+    expect(planBands(300, 8, 400)).toEqual([{ firstRow: 0, rows: 300 }]);
+    // 1280 x 853 = 1.1 MP: four bands' worth, not eight.
+    expect(planBands(853, 8, 1280)).toHaveLength(4);
+    // A 32 MP frame is unaffected by the floor.
+    expect(planBands(4640, 8, 6960)).toHaveLength(8);
+  });
+
   it("never asks for zero workers", () => {
     expect(planBands(9, 0)).toEqual([{ firstRow: 0, rows: 9 }]);
     expect(planBands(9, -3)).toEqual([{ firstRow: 0, rows: 9 }]);

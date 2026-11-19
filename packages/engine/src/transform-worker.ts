@@ -7,8 +7,10 @@
  * touches its own byte range — no coordination, no locking, and the bytes come
  * out the same as a single-threaded pass.
  *
- * The worker owns nothing but the call: the library applies a table to a row
- * range, and that is exactly the primitive used here.
+ * The module graph this file imports takes tens of milliseconds to load and
+ * warm, which is the whole job for a band of a thumbnail. So a worker is
+ * reusable: it takes one task from `workerData` when it is spawned that way, and
+ * otherwise serves tasks over `message` until the pool closes it.
  */
 
 import { parentPort, workerData } from "node:worker_threads";
@@ -25,19 +27,29 @@ export interface BandTask {
   readonly cancel?: SharedArrayBuffer;
 }
 
+/** A task handed to a pooled worker, tagged so replies can be matched. */
+export interface BandRequest {
+  readonly id: number;
+  readonly task: BandTask;
+}
+
 export type BandMessage = { type: "done"; band: RowBand } | { type: "error"; code: string; message: string };
 
-const task = workerData as BandTask;
+/** A reply from a pooled worker, carrying the request it answers. */
+export type BandReply = BandMessage & { id: number };
+
 const port = parentPort;
 
 if (!port) throw new Error("band worker must run as a worker thread");
 
-const cancelFlag = task.cancel ? new Int32Array(task.cancel) : undefined;
-const cancel: CancelToken = {
-  get canceled(): boolean {
-    return cancelFlag ? Atomics.load(cancelFlag, 0) === 1 : false;
-  },
-};
+function cancelToken(cancel?: SharedArrayBuffer): CancelToken {
+  const flag = cancel ? new Int32Array(cancel) : undefined;
+  return {
+    get canceled(): boolean {
+      return flag ? Atomics.load(flag, 0) === 1 : false;
+    },
+  };
+}
 
 function errorMessage(error: unknown): BandMessage {
   if (error instanceof Error && error.name === "Canceled") {
@@ -55,10 +67,25 @@ function errorMessage(error: unknown): BandMessage {
   };
 }
 
-try {
-  const table = createLut(task.table.size, task.table.data);
-  applyLutToRows(task.src, task.dst, task.band, table, cancel);
-  port.postMessage({ type: "done", band: task.band } satisfies BandMessage);
-} catch (error) {
-  port.postMessage(errorMessage(error));
+/** Runs one band and returns the message to send back. */
+function runTask(task: BandTask): BandMessage {
+  try {
+    const table = createLut(task.table.size, task.table.data);
+    applyLutToRows(task.src, task.dst, task.band, table, cancelToken(task.cancel));
+    return { type: "done", band: task.band };
+  } catch (error) {
+    return errorMessage(error);
+  }
+}
+
+const initial = workerData as BandTask | undefined;
+
+if (initial && initial.band) {
+  // Spawned with a task: run it once and let the thread end.
+  port.postMessage(runTask(initial));
+} else {
+  // Pooled: serve tasks until the pool terminates this worker.
+  port.on("message", (request: BandRequest) => {
+    port.postMessage({ id: request.id, ...runTask(request.task) } satisfies BandReply);
+  });
 }

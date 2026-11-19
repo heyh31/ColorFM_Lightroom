@@ -26,15 +26,31 @@ export function renderWorkerCount(): number {
 }
 
 /**
+ * Below this many pixels a band costs more to start than it can save.
+ *
+ * A worker re-imports the module graph and warms its own JIT; on a thumbnail
+ * that start-up is the whole job. 250k pixels keeps a preview on one thread and
+ * leaves a real photo well above the floor.
+ */
+export const MIN_PIXELS_PER_BAND = 250_000;
+
+/**
  * Splits `rowCount` rows into at most `workers` contiguous bands.
  *
  * The first `workers - 1` bands get `floor(rowCount / workers)` rows and the
  * last one takes the remainder, so every row is covered exactly once whatever
  * the numbers are.
+ *
+ * `width` is optional and only used for the small-image floor: pass it and a
+ * frame with fewer than {@link MIN_PIXELS_PER_BAND} per band gets fewer bands.
  */
-export function planBands(rowCount: number, workers: number): RowBand[] {
-  const count = Math.max(1, Math.floor(workers) || 1);
+export function planBands(rowCount: number, workers: number, width = 0): RowBand[] {
+  let count = Math.max(1, Math.floor(workers) || 1);
   if (rowCount <= 0) return [];
+  if (width > 0) {
+    const affordable = Math.floor((rowCount * width) / MIN_PIXELS_PER_BAND);
+    count = Math.min(count, Math.max(1, affordable));
+  }
   const per = Math.floor(rowCount / count);
   if (per === 0) {
     // More workers than rows: one band per row, no empty bands.
@@ -58,5 +74,5 @@ export function planRenderBands(
 ): { bands: RowBand[]; width: number; height: number } | undefined {
   const layout = editableLayout(src);
   if (!layout) return undefined;
-  return { bands: planBands(layout.height, workers), ...layout };
+  return { bands: planBands(layout.height, workers, layout.width), ...layout };
 }

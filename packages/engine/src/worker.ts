@@ -36,7 +36,7 @@ import {
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import type { BandMessage, BandTask } from "./transform-worker.js";
+import type { BandReply, BandRequest, BandTask } from "./transform-worker.js";
 
 /** A baked table in the form it travels between threads. */
 export interface FlatTable {
@@ -82,22 +82,35 @@ export type WorkerTask =
 
 /** Progress or completion, as seen from the main thread. */
 export type WorkerMessage =
-  | { type: "stage"; stage: string; pct: number }
-  | { type: "done"; result: unknown; table?: FlatTable }
-  | { type: "error"; code: string; message: string };
+  | { type: "stage"; id: number; stage: string; pct: number }
+  | { type: "done"; id: number; result: unknown; table?: FlatTable }
+  | { type: "error"; id: number; code: string; message: string };
 
 interface Envelope {
   task: WorkerTask;
   cancel?: SharedArrayBuffer;
 }
 
-const envelope = workerData as Envelope;
+/** A task handed to a resident worker, tagged so replies can be matched. */
+export interface JobRequest {
+  readonly id: number;
+  readonly task: WorkerTask;
+  readonly cancel?: SharedArrayBuffer;
+}
+
 const port = parentPort;
 
 if (!port) throw new Error("job worker must run as a worker thread");
 
-/** Cancellation flag shared with the main thread. */
-const cancelFlag = envelope.cancel ? new Int32Array(envelope.cancel) : undefined;
+/**
+ * Cancellation flag for the task in flight.
+ *
+ * Reassigned per task because this worker may serve several: the flag belongs to
+ * the job, the thread does not.
+ */
+let cancelFlag: Int32Array | undefined;
+let currentCancel: SharedArrayBuffer | undefined;
+let currentId = 0;
 const cancel: CancelToken = {
   get canceled(): boolean {
     return cancelFlag ? Atomics.load(cancelFlag, 0) === 1 : false;
@@ -105,7 +118,7 @@ const cancel: CancelToken = {
 };
 
 function report(stage: string, pct: number): void {
-  port?.postMessage({ type: "stage", stage, pct } satisfies WorkerMessage);
+  port?.postMessage({ type: "stage", id: currentId, stage, pct });
 }
 
 /**
@@ -128,9 +141,14 @@ function entryFor(name: string): { url: URL; execArgv?: string[] } {
 /**
  * Runs one band per worker and waits for all of them.
  *
- * A failure cancels the siblings: the destination is a copy that will be
- * overwritten by the next attempt, and leaving half the bands running would
- * only burn cores on a render nobody is waiting for.
+ * The workers come from a pool that outlives the job: their module load and JIT
+ * warm-up is around 250 ms for eight of them on a 32 MP frame, which is half the
+ * apply stage. A failure retires the workers that were in flight — a cancelled
+ * band stops mid-strip, and the state it leaves behind is not handed to the next
+ * job.
+ *
+ * Renders are serialised through `serialRender` so two jobs cannot each take
+ * eight workers and oversubscribe the cores.
  */
 async function runBands(
   src: string,
@@ -139,75 +157,166 @@ async function runBands(
   table: Lut3D,
   cancelBuffer: SharedArrayBuffer | undefined,
 ): Promise<void> {
-  const entry = entryFor("transform-worker");
-  let finished = 0;
-  const running: Worker[] = [];
+  const tasks: BandTask[] = bands.map((band) => ({
+    src,
+    dst,
+    blockRows: DEFAULT_BLOCK_ROWS,
+    band,
+    table: { size: table.size, data: table.data },
+    ...(cancelBuffer ? { cancel: cancelBuffer } : {}),
+  }));
 
-  const failed = (index: number): void => {
-    for (let other = 0; other < running.length; other += 1) {
-      const sibling = running[other];
-      if (other !== index && sibling) void sibling.terminate();
-    }
-  };
+  await serialRender(() =>
+    pool().run(tasks, (finished) => {
+      report("apply", 55 + Math.round((35 * finished) / bands.length));
+    }),
+  );
+}
 
-  try {
-    await Promise.all(
-      bands.map(
-        (band, index) =>
-          new Promise<void>((resolve, reject) => {
-            const task: BandTask = {
-              src,
-              dst,
-              blockRows: DEFAULT_BLOCK_ROWS,
-              band,
-              table: { size: table.size, data: table.data },
-              ...(cancelBuffer ? { cancel: cancelBuffer } : {}),
-            };
-            const worker = new Worker(entry.url, {
-              workerData: task,
-              ...(entry.execArgv ? { execArgv: entry.execArgv } : {}),
-            });
-            running[index] = worker;
+/**
+ * A pool of band workers.
+ *
+ * Each worker loads the whole library and warms its own JIT; on a 32 MP frame
+ * that start-up is around 250 ms for eight of them, which is half the apply
+ * stage. Keeping them alive makes that a per-process cost instead of a
+ * per-render one, and the pixels are identical either way — a band only touches
+ * its own rows.
+ *
+ * Two rules make reuse safe: one task at a time per worker (a task is posted
+ * with an id and the reply must carry it), and a failed or cancelled task
+ * retires its worker, so nothing half-transformed is handed to the next job.
+ *
+ * Idle workers are `unref`ed, so a pool that is never used again cannot keep the
+ * engine process alive.
+ */
+class BandPool {
+  readonly #entry: { url: URL; execArgv?: string[] };
+  readonly #idle: Worker[] = [];
+  readonly #busy = new Set<Worker>();
+  #nextId = 1;
+  #closed = false;
 
-            let settled = false;
-            const finish = (action: () => void): void => {
-              if (settled) return;
-              settled = true;
-              void worker.terminate().then(action, action);
-            };
-
-            worker.on("message", (message: BandMessage) => {
-              if (message.type === "done") {
-                finished += 1;
-                report("apply", 55 + Math.round((35 * finished) / bands.length));
-                finish(resolve);
-                return;
-              }
-              failed(index);
-              finish(() => reject(new ColorfmError("io", message.message)));
-            });
-            worker.on("error", (error) => {
-              failed(index);
-              finish(() => reject(error));
-            });
-            worker.on("exit", (code) => {
-              // A worker we terminated ourselves exits with 1; only an
-              // unexpected exit means the band never finished.
-              if (settled) return;
-              if (code !== 0) {
-                failed(index);
-                finish(() => reject(new Error(`band worker exited with ${code}`)));
-              } else {
-                failed(index);
-                finish(() => reject(new Error("band worker exited without a result")));
-              }
-            });
-          }),
-      ),
-    );
-  } finally {
-    for (const worker of running) void worker.terminate();
+  constructor(entry: { url: URL; execArgv?: string[] }) {
+    this.#entry = entry;
   }
+
+  /**
+   * Runs every task, one per worker, and resolves when all have finished.
+   *
+   * `onDone` is called as each band completes, so the caller can report
+   * progress. A rejection retires every worker that was in flight.
+   */
+  async run(tasks: readonly BandTask[], onDone?: (finished: number) => void): Promise<void> {
+    if (this.#closed) throw new Error("band pool is closed");
+    if (tasks.length === 0) return;
+
+    const workers = tasks.map(() => this.#take());
+    let finished = 0;
+    try {
+      await Promise.all(
+        tasks.map(async (task, index) => {
+          const worker = workers[index];
+          await this.#dispatch(worker, task);
+          finished += 1;
+          onDone?.(finished);
+          this.#release(worker);
+        }),
+      );
+    } catch (error) {
+      for (const worker of workers) this.#discard(worker);
+      throw error;
+    }
+  }
+
+  /** Terminates every worker the pool owns. */
+  async close(): Promise<void> {
+    this.#closed = true;
+    const all = [...this.#idle, ...this.#busy];
+    this.#idle.length = 0;
+    this.#busy.clear();
+    await Promise.all(all.map((worker) => worker.terminate().then(noop, noop)));
+  }
+
+  #take(): Worker {
+    const idle = this.#idle.pop();
+    if (idle) {
+      idle.ref();
+      this.#busy.add(idle);
+      return idle;
+    }
+    const worker = new Worker(this.#entry.url, {
+      ...(this.#entry.execArgv ? { execArgv: this.#entry.execArgv } : {}),
+    });
+    this.#busy.add(worker);
+    return worker;
+  }
+
+  #release(worker: Worker): void {
+    if (!this.#busy.delete(worker)) return;
+    if (this.#closed) {
+      void worker.terminate();
+      return;
+    }
+    // Not `unref` while a task is in flight: the reply must still be delivered.
+    worker.unref();
+    this.#idle.push(worker);
+  }
+
+  #discard(worker: Worker): void {
+    this.#busy.delete(worker);
+    const at = this.#idle.indexOf(worker);
+    if (at >= 0) this.#idle.splice(at, 1);
+    void worker.terminate().then(noop, noop);
+  }
+
+  #dispatch(worker: Worker, task: BandTask): Promise<void> {
+    const id = this.#nextId++;
+    return new Promise<void>((resolve, reject) => {
+      const settle = (action: () => void): void => {
+        worker.off("message", onMessage);
+        worker.off("error", onError);
+        worker.off("exit", onExit);
+        action();
+      };
+      const onMessage = (message: BandReply): void => {
+        if (message.id !== id) {
+          settle(() => reject(new Error(`band worker replied to ${message.id}, expected ${id}`)));
+          return;
+        }
+        if (message.type === "done") settle(resolve);
+        else settle(() => reject(new Error(message.message)));
+      };
+      const onError = (error: Error): void => settle(() => reject(error));
+      const onExit = (code: number): void =>
+        settle(() => reject(new Error(`band worker exited with ${code}`)));
+
+      worker.on("message", onMessage);
+      worker.on("error", onError);
+      worker.on("exit", onExit);
+      worker.postMessage({ id, task } satisfies BandRequest);
+    });
+  }
+}
+
+function noop(): void {}
+
+/** The pool this job worker lends its renders; created on first use. */
+function pool(): BandPool {
+  bandPool ??= new BandPool(entryFor("transform-worker"));
+  return bandPool;
+}
+
+/**
+ * Runs one render at a time.
+ *
+ * Every render wants every core, so overlapping them would only add context
+ * switches: the second render waits for the first instead of splitting the
+ * machine with it.
+ */
+function serialRender<T>(work: () => Promise<T>): Promise<T> {
+  const next = renderGate.then(work, work);
+  renderGate = next.catch(() => undefined);
+  return next;
 }
 
 function canceled(): Error {
@@ -233,6 +342,11 @@ function tableFor(params: Params, grid: number, strength: number, provided?: Fla
 
 /** Table this job baked, echoed to the main thread so it can be cached. */
 let bakedTable: FlatTable | undefined;
+
+/** Band workers, reused across the renders this job worker serves. */
+let bandPool: BandPool | undefined;
+/** Tail of the render queue; see `serialRender`. */
+let renderGate: Promise<unknown> = Promise.resolve();
 
 async function run(task: WorkerTask): Promise<unknown> {
   switch (task.kind) {
@@ -272,7 +386,7 @@ async function run(task: WorkerTask): Promise<unknown> {
           }
           throw error;
         }
-        await runBands(task.src, task.dst, planned.bands, table, envelope.cancel);
+        await runBands(task.src, task.dst, planned.bands, table, currentCancel);
         return {
           width: planned.width,
           height: planned.height,
@@ -337,7 +451,7 @@ async function run(task: WorkerTask): Promise<unknown> {
   }
 }
 
-function failureMessage(error: unknown): WorkerMessage {
+function failureMessage(error: unknown): { type: "error"; code: string; message: string } {
   if (error instanceof Error && error.name === "Canceled") {
     return { type: "error", code: "E_CANCELED", message: "canceled by request" };
   }
@@ -359,12 +473,32 @@ function failureMessage(error: unknown): WorkerMessage {
   };
 }
 
-void run(envelope.task).then(
-  (result) =>
-    port.postMessage({
+/** Runs one task and reports it back under the id it arrived with. */
+async function handle(request: JobRequest): Promise<void> {
+  currentId = request.id;
+  currentCancel = request.cancel;
+  cancelFlag = request.cancel ? new Int32Array(request.cancel) : undefined;
+  bakedTable = undefined;
+  try {
+    const result = await run(request.task);
+    port?.postMessage({
+      id: request.id,
       type: "done",
       result,
       ...(bakedTable ? { table: bakedTable } : {}),
-    } satisfies WorkerMessage),
-  (error: unknown) => port.postMessage(failureMessage(error)),
-);
+    });
+  } catch (error) {
+    port?.postMessage({ id: request.id, ...failureMessage(error) });
+  }
+}
+
+const initial = workerData as Envelope | undefined;
+
+if (initial && initial.task) {
+  // Spawned with a task: serve it once and let the thread end.
+  currentCancel = initial.cancel;
+  void handle({ id: 0, task: initial.task, ...(initial.cancel ? { cancel: initial.cancel } : {}) });
+} else {
+  // Resident: serve tasks until the main thread terminates this worker.
+  port.on("message", (request: JobRequest) => void handle(request));
+}

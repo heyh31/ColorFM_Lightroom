@@ -98,7 +98,8 @@ its home directory; every request needs `Authorization: Bearer <token>`.
 | `npm run desktop:dev` | Build the engine, then Vite + the macOS window |
 | `npm run desktop:build` | Same, packaged as `.app` |
 | `npm run model:link` | Symlink the checkpoint into `models/` |
-| `npm run bench:core` | Bake / lookup throughput, TypeScript side |
+| `npm run bench:core` | Bake / lookup throughput, one core |
+| `npm run bench:io` | Copy, encode and write split for one 32 MP frame |
 | `npm run bench:engine` | Whole session, timed end to end |
 | `npm run desktop:web` | Frontend only, in a browser (no window APIs) |
 
@@ -131,7 +132,7 @@ What that buys, checked by the test suite:
   and the render see the same decode, so they cannot drift apart.
 
 See [docs/performance.md](docs/performance.md) for measured throughput (32 MP
-frame end to end in 1.5 s; a render in 0.73 s banded across cores).
+frame end to end in 1.0 s; a render in 0.38 s banded across cores).
 
 ## Layout
 

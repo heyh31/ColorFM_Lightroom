@@ -57,6 +57,7 @@ export {
   type CancelToken,
   type ImageInfo,
   type RowBand,
+  type StageTimings,
   type StripTransform,
 } from "./io/tiff.js";
 

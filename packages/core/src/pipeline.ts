@@ -17,6 +17,7 @@ import {
   type CancelToken,
   type ImageInfo,
   type RowBand,
+  type StageTimings,
   type StripTransform,
 } from "./io/tiff.js";
 
@@ -51,13 +52,19 @@ function lutTransform(table: Lut3D, strength: number): StripTransform {
  * Applies an already-baked LUT. Split out so callers can time, and cache, the
  * bake separately from the per-pixel work.
  */
-export function applyLut(src: string, dst: string, table: Lut3D): ImageInfo {
-  return transform(src, dst, DEFAULT_BLOCK_ROWS, lutTransform(table, 1));
+export function applyLut(src: string, dst: string, table: Lut3D, timings?: StageTimings): ImageInfo {
+  return transform(src, dst, DEFAULT_BLOCK_ROWS, lutTransform(table, 1), timings);
 }
 
 /** {@link applyLut} with cooperative cancellation, checked per strip. */
-export function applyLutWithCancel(src: string, dst: string, table: Lut3D, cancel: CancelToken): ImageInfo {
-  return transformWithCancel(src, dst, DEFAULT_BLOCK_ROWS, cancel, lutTransform(table, 1));
+export function applyLutWithCancel(
+  src: string,
+  dst: string,
+  table: Lut3D,
+  cancel: CancelToken,
+  timings?: StageTimings,
+): ImageInfo {
+  return transformWithCancel(src, dst, DEFAULT_BLOCK_ROWS, cancel, lutTransform(table, 1), timings);
 }
 
 /** {@link applyLutWithCancel} with a strength in `[0,1]`. */
@@ -67,8 +74,9 @@ export function applyLutWithCancelStrength(
   table: Lut3D,
   strength: number,
   cancel: CancelToken,
+  timings?: StageTimings,
 ): ImageInfo {
-  return transformWithCancel(src, dst, DEFAULT_BLOCK_ROWS, cancel, lutTransform(table, strength));
+  return transformWithCancel(src, dst, DEFAULT_BLOCK_ROWS, cancel, lutTransform(table, strength), timings);
 }
 
 /**
