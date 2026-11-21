@@ -8,10 +8,12 @@
  * reaches the worker.
  */
 
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+
+import { newSession } from "../src/session.js";
 
 import { call, startApi, tempApp, waitForJob, type RunningApi } from "./helpers.js";
 
@@ -180,6 +182,71 @@ describe("lightroom sessions", () => {
     const response = await call(running, "GET", "/v1/lightroom/sessions?active=1");
     expect(response.body.data?.sessions).toEqual([]);
     expect(response.body.data?.active).toBe(0);
+  });
+
+  it("snapshots history as soon as a result exists", async () => {
+    const temp = tempApp("api-history-snapshot");
+    cleanups.push(temp.cleanup);
+    const running = await startApi(temp.app);
+    cleanups.push(running.close);
+
+    const result = join(temp.root, "IMG_0100_ColorFM.tif");
+    writeFileSync(result, "rendered");
+
+    const session = newSession("s_snap", join(temp.root, "content.tif"), "IMG_0100", 1, undefined);
+    session.state = "rendering";
+    session.render_done = true;
+    session.result_path = result;
+    temp.app.sessions.create(session);
+
+    const response = await call(running, "POST", "/v1/lightroom/sessions/s_snap/ready-to-import");
+    expect(response.status).toBe(200);
+
+    // Not waiting for the plug-in to report the import: the previews a session
+    // borrows live in the shared parameter cache and can be overwritten.
+    expect(existsSync(join(temp.library, "history/s_snap/entry.json"))).toBe(true);
+  });
+
+  it("deletes a history entry but keeps the rendered result", async () => {
+    const temp = tempApp("api-history-delete");
+    cleanups.push(temp.cleanup);
+    const running = await startApi(temp.app);
+    cleanups.push(running.close);
+
+    const raw = join(temp.root, "IMG_0001.CR3");
+    const result = join(temp.root, "IMG_0001_ColorFM.tif");
+    const scratch = join(temp.library, "lightroom/export-1/IMG_0001.tif");
+    writeFileSync(raw, "raw");
+    writeFileSync(result, "rendered");
+    mkdirSync(join(temp.library, "lightroom/export-1"), { recursive: true });
+    writeFileSync(scratch, "scratch");
+
+    const session = newSession("s_delete", scratch, "IMG_0001", 1, { raw_path: raw });
+    session.state = "imported";
+    session.result_path = result;
+    temp.app.sessions.create(session);
+
+    const response = await call(running, "DELETE", "/v1/lightroom/history/s_delete");
+    expect(response.status).toBe(200);
+
+    // The result is in the catalogue by now; deleting it would leave a missing
+    // photo behind, so it stays. The scratch export and the records go.
+    expect(existsSync(result)).toBe(true);
+    expect(existsSync(raw)).toBe(true);
+    expect(existsSync(scratch)).toBe(false);
+    expect(existsSync(join(temp.home, "lightroom/sessions/s_delete.json"))).toBe(false);
+
+    const after = await call(running, "GET", "/v1/lightroom/history");
+    expect(after.body.data?.entries).toEqual([]);
+    const sessions = await call(running, "GET", "/v1/lightroom/sessions");
+    expect(sessions.body.data?.sessions).toEqual([]);
+  });
+
+  it("answers 404 for a history entry it does not have", async () => {
+    const { api: running } = await api("api-history-delete-missing");
+    const response = await call(running, "DELETE", "/v1/lightroom/history/s_missing");
+    expect(response.status).toBe(404);
+    expect(response.body.error?.code).toBe("E_NOT_FOUND");
   });
 
   it("returns an empty filmstrip", async () => {

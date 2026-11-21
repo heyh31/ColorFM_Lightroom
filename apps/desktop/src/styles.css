@@ -229,6 +229,15 @@ p {
   cursor: default;
 }
 
+.button.danger {
+  border-color: rgb(200 60 50 / 35%);
+  color: #b3261e;
+}
+
+.button.danger:hover:not(:disabled) {
+  background: rgb(200 60 50 / 8%);
+}
+
 .button.primary {
   background: var(--accent);
   border-color: transparent;

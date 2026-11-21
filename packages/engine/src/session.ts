@@ -243,6 +243,22 @@ export class SessionStore {
     return { ...candidate };
   }
 
+  /**
+   * Forgets a session: the file goes, memory drops it. A missing file is not an
+   * error — the caller's goal is that the id stops existing.
+   */
+  remove(id: string): boolean {
+    const index = this.sessions.findIndex((session) => session.id === id);
+    if (index < 0) return false;
+    this.sessions.splice(index, 1);
+    try {
+      rmSync(join(this.dir, `${id}.json`), { force: true });
+    } catch (error) {
+      throw EngineError.io((error as Error).message, error);
+    }
+    return true;
+  }
+
   /** Moves a session to `to`, then applies any extra changes. */
   transition(id: string, to: SessionState, mutate: (session: Session) => void = () => {}): Session {
     return this.update(id, (session) => {

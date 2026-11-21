@@ -38,6 +38,9 @@ const zh: Record<string, string> = {
   "action.viewing": "查看记录",
   "action.replace": "更换",
   "action.refreshHistory": "刷新历史",
+  "action.delete": "删除记录",
+  "action.deleteConfirm": "确认删除",
+  "history.deleteHint": "删除这条记录与本地任务数据；已导出的 TIFF 保留（Lightroom 里仍可用）",
 
   "panel.content": "content",
   "panel.transferred": "transferred",
@@ -103,7 +106,7 @@ const zh: Record<string, string> = {
   "settings.group.storage": "存储",
   "settings.deleteExport": "写回后删除中间 TIFF",
   "settings.deleteExportHint":
-    "Lightroom 导出给引擎的 16-bit 临时文件，每张约 190 MB；写回成功后引擎不再读它。结果文件与历史不受影响。",
+    "Lightroom 导出给引擎的 16-bit 临时文件5；写回成功后引擎不再读它。结果文件与历史不受影响。",
   "settings.cleanup": "立即清理…",
   "settings.cleanupLabel": "导出缓存",
   "settings.cleanupDone": "已清理 {count} 个文件夹，释放 {size}",
@@ -142,6 +145,10 @@ const en: Record<string, string> = {
   "action.viewing": "Viewing",
   "action.replace": "Replace",
   "action.refreshHistory": "Refresh history",
+  "action.delete": "Delete entry",
+  "action.deleteConfirm": "Delete",
+  "history.deleteHint":
+    "Removes this entry and its local task data; the exported TIFF stays, so Lightroom keeps working",
 
   "panel.content": "content",
   "panel.transferred": "transferred",

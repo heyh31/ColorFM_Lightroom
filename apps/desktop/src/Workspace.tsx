@@ -11,7 +11,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { Engine, describeError, type HistoryEntry, type Job, type Session } from "./lib/engine";
-import { ArrowRightIcon, CheckIcon, FolderIcon, ImageIcon, RefreshIcon } from "./icons";
+import { ArrowRightIcon, CheckIcon, FolderIcon, ImageIcon, RefreshIcon, TrashIcon } from "./icons";
 import { useI18n } from "./lib/i18n";
 import type { Settings } from "./lib/settings";
 
@@ -355,7 +355,9 @@ export default function Workspace({ engine, session, settings, onRefresh, onClos
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [strength, setStrength] = useState(session?.strength ?? 1);
-  const [busy, setBusy] = useState<"preview" | "render" | null>(null);
+  const [busy, setBusy] = useState<"preview" | "render" | "delete" | null>(null);
+  // Deleting is irreversible, so the button asks once more before it fires.
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -606,6 +608,22 @@ export default function Workspace({ engine, session, settings, onRefresh, onClos
     }
   }, [engine, sessionId, onRefresh]);
 
+  const deleteEntry = useCallback(async () => {
+    if (!pendingDelete) return;
+    setBusy("delete");
+    setError(null);
+    try {
+      await engine.deleteHistory(pendingDelete);
+      setPendingDelete(null);
+      setSelectedId(null);
+      await loadHistory();
+    } catch (err) {
+      setError(describeError(err, t));
+    } finally {
+      setBusy(null);
+    }
+  }, [engine, pendingDelete, loadHistory, t]);
+
   const cancel = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -702,6 +720,27 @@ export default function Workspace({ engine, session, settings, onRefresh, onClos
                 <FolderIcon />
                 {t("action.reveal")}
               </button>
+              {pendingDelete === selected.id ? (
+                <button
+                  className="button danger"
+                  disabled={busy !== null}
+                  title={t("history.deleteHint")}
+                  onClick={() => void deleteEntry()}
+                >
+                  <TrashIcon />
+                  {t("action.deleteConfirm")}
+                </button>
+              ) : (
+                <button
+                  className="button"
+                  disabled={busy !== null}
+                  title={t("history.deleteHint")}
+                  onClick={() => setPendingDelete(selected.id)}
+                >
+                  <TrashIcon />
+                  {t("action.delete")}
+                </button>
+              )}
               <button className="button" onClick={() => setSelectedId(null)}>
                 {t("action.back")}
               </button>

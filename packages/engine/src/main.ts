@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createApiServer } from "./api.js";
+import { sweepExports } from "./exports.js";
 import { History } from "./history.js";
 import { SessionStore } from "./session.js";
 import { Store } from "./store.js";
@@ -113,6 +114,17 @@ async function main(): Promise<void> {
 
   const token = randomToken();
   const app = new App(token, args.model, store, sessions, history);
+
+  // Exports left behind by sessions nobody finished. Cheap (a handful of
+  // directories) and it is the only moment we know no session is mid-flight.
+  // Startup is the one moment nothing can be mid-flight: anything still open
+  // after half an hour was abandoned, and the plug-in has stopped waiting too.
+  const swept = sweepExports(app, { staleSecs: 30 * 60 });
+  if (swept.removed.length > 0) {
+    console.error(
+      `swept ${swept.removed.length} stray export(s), cancelled ${swept.cancelled.length}, kept ${swept.kept}`,
+    );
+  }
 
   try {
     await app.loadModel();

@@ -26,6 +26,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
@@ -105,6 +106,18 @@ export class History {
       throw EngineError.io((error as Error).message, error);
     }
     return entry;
+  }
+
+  /** Deletes the snapshot directory for `id`. Returns whether one existed. */
+  remove(id: string): boolean {
+    const dir = join(this.root, id);
+    if (!existsSync(dir)) return false;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      throw EngineError.io((error as Error).message, error);
+    }
+    return true;
   }
 
   /** Newest import first. Entries whose file disappeared are skipped. */

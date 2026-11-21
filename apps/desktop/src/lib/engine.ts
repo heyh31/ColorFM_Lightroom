@@ -149,7 +149,7 @@ export class Engine {
     return new Engine(info);
   }
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`http://127.0.0.1:${this.port}${path}`, {
@@ -221,6 +221,14 @@ export class Engine {
   async history(): Promise<HistoryEntry[]> {
     const data = await this.request<{ entries: HistoryEntry[] }>("GET", "/v1/lightroom/history");
     return data.entries;
+  }
+
+  /**
+   * Deletes one history entry: the snapshot, the session record and the scratch
+   * export. The rendered TIFF stays — it is usually already in Lightroom.
+   */
+  async deleteHistory(id: string): Promise<{ id: string; removed: string[]; kept?: string[] }> {
+    return this.request("DELETE", `/v1/lightroom/history/${encodeURIComponent(id)}`);
   }
 
   async getSession(id: string): Promise<Session> {

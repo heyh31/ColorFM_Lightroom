@@ -11,13 +11,14 @@
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { availableParallelism } from "node:os";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 import { preview as previewImage, encodeJpeg } from "@colorfm/core";
 
 import { EngineError, statusFor, asEngineError } from "./errors.js";
+import { sweepExports } from "./exports.js";
 import {
   PREVIEW_JPEG_QUALITY,
   PREVIEW_MAX_EDGE,
@@ -123,6 +124,12 @@ async function handle(app: App, request: IncomingMessage, response: ServerRespon
     if (method === "GET" && path === "/v1/lightroom/history") {
       history(app, response);
       return;
+    }
+    if (segments[0] === "v1" && segments[1] === "lightroom" && segments[2] === "history" && segments[3]) {
+      if (method === "DELETE" && segments.length === 4) {
+        deleteHistory(app, response, decodeURIComponent(segments[3]));
+        return;
+      }
     }
     if (path === "/v1/lightroom/sessions") {
       if (method === "GET") {
@@ -541,6 +548,15 @@ function sessionReadyToImport(app: App, response: ServerResponse, id: string): v
   const updated = app.sessions.transition(id, "ready_to_import", (target) => {
     delete target.notice;
   });
+  // Snapshot as soon as a result exists, not only once the plug-in reports the
+  // import: the filmstrip should be stable even when a session is never imported,
+  // and the previews it would otherwise borrow are shared with the parameter
+  // cache, which a later run of the same content+reference pair overwrites.
+  try {
+    app.history.record(updated);
+  } catch (error) {
+    console.error(`warning: cannot record history for ${updated.id}: ${(error as Error).message}`);
+  }
   ok(response, { session: sessionValue(updated) });
 }
 
@@ -559,8 +575,54 @@ function sessionImported(app: App, response: ServerResponse, id: string): void {
 
 /** Only sessions that produced a result appear here; a previewed-only session is not history. */
 function history(app: App, response: ServerResponse): void {
+  // The filmstrip is refreshed whenever the window opens or an import lands, so
+  // this is also the natural moment to clear exports that lost their session.
+  sweepExports(app);
   const sessions = app.sessions.list(false);
   ok(response, { entries: app.history.collect(sessions) });
+}
+
+/**
+ * Forgets one history entry: its snapshot, its session record, and the scratch
+ * TIFF Lightroom exported for the engine.
+ *
+ * The rendered result is deliberately kept. By the time a user deletes a
+ * history entry the file is usually already in the Lightroom catalogue, and
+ * removing it would leave a missing photo behind — the catalogue is not ours to
+ * edit, so the file it points at stays.
+ */
+function deleteHistory(app: App, response: ServerResponse, id: string): void {
+  const entry = app.history.collect(app.sessions.list(false)).find((candidate) => candidate.id === id);
+  if (!entry) throw EngineError.notFound(`no such history entry: ${id}`);
+
+  const removed: string[] = [];
+  if (app.history.remove(id)) removed.push(`history/${id}`);
+
+  const session = app.sessions.get(id);
+  if (session) {
+    // The 16-bit export is scratch the engine asked for; once the session is
+    // gone nothing reads it again. It only ever lives inside the library.
+    const scratch = session.content_path;
+    if (scratch && insideLibrary(app, scratch)) {
+      rmSync(scratch, { force: true });
+      removed.push(scratch);
+    }
+    app.sessions.remove(id);
+    removed.push(`sessions/${id}.json`);
+  }
+
+  ok(response, {
+    id,
+    removed,
+    ...(entry.result_path ? { kept: [entry.result_path] } : {}),
+  });
+}
+
+/** True when `path` sits under `<library>/lightroom`, the only tree we delete from. */
+function insideLibrary(app: App, path: string): boolean {
+  const root = join(app.store.root, "lightroom");
+  const relative = path.startsWith(root) ? path.slice(root.length) : undefined;
+  return relative !== undefined && !relative.startsWith("..");
 }
 
 function sessionCancel(app: App, response: ServerResponse, id: string): void {

@@ -117,3 +117,12 @@ export function BrandMark({ size = 18, className }: IconProps) {
     </svg>
   );
 }
+
+export function TrashIcon({ size = 15, className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} {...base}>
+      <path d="M4 7h16M9.5 7V5.2h5V7M6.5 7l.8 12.2h9.4L17.5 7" />
+      <path d="M10.2 10.5v6M13.8 10.5v6" />
+    </svg>
+  );
+}
