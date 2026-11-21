@@ -11,6 +11,9 @@
 --
 -- Everything here is a literal table on purpose: Info.lua is parsed before any
 -- plug-in code runs, and a runtime error in it takes the whole plug-in down.
+-- The restricted loader still provides `LOC`, so titles are ZStrings: the value
+-- after `=` is the English default, and TranslatedStrings_zh.txt supplies the
+-- Chinese wording. Lightroom picks the dictionary by its own UI language.
 --
 -- Info.lua is read once, when Lightroom loads the plug-in: after editing this
 -- file (or adding scripts), restart Lightroom before expecting the menu to
@@ -20,56 +23,40 @@ return {
     LrSdkVersion = 10.0,
     LrSdkMinimumVersion = 5.0,
     LrToolkitIdentifier = "com.colorfm.lightroom",
-    LrPluginName = "ColorFM-LR",
+    LrPluginName = LOC "$$$/ColorFM/PluginName=ColorFM-LR",
 
     -- 文件 > 增效工具额外信息
     LrExportMenuItems = {
         {
-            title = "ColorFM-LR：处理当前照片…",
+            title = LOC "$$$/ColorFM/MenuProcess=Process Current Photo…",
             file = "MenuProcess.lua",
         },
         {
-            title = "ColorFM-LR：继续未完成会话…",
-            file = "MenuResume.lua",
-        },
-        {
-            title = "ColorFM-LR：检查引擎状态",
+            title = LOC "$$$/ColorFM/MenuStatus=Engine Status",
             file = "MenuStatus.lua",
-        },
-        {
-            title = "ColorFM-LR：设置桌面应用路径…",
-            file = "MenuSetApp.lua",
         },
     },
 
     -- 图库 > 增效工具额外功能 (same commands, plus the SDK probes)
     LrLibraryMenuItems = {
         {
-            title = "ColorFM-LR：处理当前照片…",
+            title = LOC "$$$/ColorFM/MenuProcess=Process Current Photo…",
             file = "MenuProcess.lua",
         },
         {
-            title = "ColorFM-LR：继续未完成会话…",
-            file = "MenuResume.lua",
-        },
-        {
-            title = "ColorFM-LR：检查引擎状态",
+            title = LOC "$$$/ColorFM/MenuStatus=Engine Status",
             file = "MenuStatus.lua",
         },
         {
-            title = "ColorFM-LR：设置桌面应用路径…",
-            file = "MenuSetApp.lua",
-        },
-        {
-            title = "ColorFM-LR 测试：导出当前照片 TIFF…",
+            title = LOC "$$$/ColorFM/MenuTestExport=Test: Export Current Photo as TIFF…",
             file = "MenuExport.lua",
         },
         {
-            title = "ColorFM-LR 测试：导入 TIFF 为新照片…",
+            title = LOC "$$$/ColorFM/MenuTestImport=Test: Import TIFF as New Photo…",
             file = "MenuImport.lua",
         },
         {
-            title = "ColorFM-LR 测试：导出并堆叠导入…",
+            title = LOC "$$$/ColorFM/MenuTestRoundTrip=Test: Export, Import and Stack…",
             file = "MenuRoundTrip.lua",
         },
     },

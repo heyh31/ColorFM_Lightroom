@@ -1,0 +1,6 @@
+"$$$/ColorFM/PluginName=ColorFM-LR"
+"$$$/ColorFM/MenuProcess=处理当前照片…"
+"$$$/ColorFM/MenuStatus=检查引擎状态"
+"$$$/ColorFM/MenuTestExport=测试：导出当前照片 TIFF…"
+"$$$/ColorFM/MenuTestImport=测试：导入 TIFF 为新照片…"
+"$$$/ColorFM/MenuTestRoundTrip=测试：导出并堆叠导入…"

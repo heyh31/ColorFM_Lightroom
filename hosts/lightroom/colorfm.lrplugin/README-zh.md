@@ -14,20 +14,18 @@ ColorFM 管线在 Lightroom 这一半。它把选中的照片导出成 16-bit sR
 
 | 位置 | 出现的内容 |
 |---|---|
-| **文件 > 增效工具额外信息**<br>(`LrExportMenuItems`) | 4 条正式命令 |
-| **图库 > 增效工具额外功能**<br>(`LrLibraryMenuItems`) | 4 条正式命令 + 3 条 SDK 测试 |
+| **文件 > 增效工具额外信息**<br>(`LrExportMenuItems`) | 2 条正式命令 |
+| **图库 > 增效工具额外功能**<br>(`LrLibraryMenuItems`) | 2 条正式命令 + 3 条 SDK 测试 |
 
 ```text
 文件 > 增效工具额外信息 >
-  ColorFM：处理当前照片…
-  ColorFM：继续未完成会话…
-  ColorFM：检查引擎状态
-  ColorFM：设置桌面应用路径…
+  ColorFM-LR：处理当前照片…
+  ColorFM-LR：检查引擎状态
 ```
 
 ```text
 图库 > 增效工具额外功能 >
-  …（同上四条）…
+  …（同上两条）…
   ColorFM 测试：导出当前照片 TIFF…
   ColorFM 测试：导入 TIFF 为新照片…
   ColorFM 测试：导出并堆叠导入…
@@ -97,7 +95,7 @@ Lightroom 在等待期间显示可取消的进度面板；取消会同时取消�
 
 解析顺序：
 
-1. `ColorFM：设置桌面应用路径…`（存在 Lightroom 插件偏好里）
+1. Lightroom 插件偏好里的 `colorfmAppPath`（旧版本的"设置桌面应用路径"菜单写入的，仍会被读取）
 2. 源码工作副本：插件从自身位置逐级向上找
    `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app`，再找
    `apps/desktop/src-tauri/target/release/colorfm-desktop`

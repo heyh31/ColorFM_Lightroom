@@ -1,5 +1,7 @@
 local LrDialogs = import "LrDialogs"
 local LrTasks = import "LrTasks"
+
+local Strings = require "Strings"
 local TestSupport = require "TestSupport"
 
 LrTasks.startAsyncTask(function()
@@ -10,7 +12,7 @@ LrTasks.startAsyncTask(function()
 
     local result = TestSupport.importPaths(paths)
     LrDialogs.message(
-        "ColorFM:TIFF 导入完成",
+        Strings.t("test_import_title"),
         TestSupport.describeImportResult(result),
         "info"
     )

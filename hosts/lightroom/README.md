@@ -29,19 +29,28 @@ easy to look in the wrong spot):
 
 | Where | What |
 |---|---|
-| **File > Plug-in Extras** (`LrExportMenuItems`) | the 4 real commands |
-| **Library > Plug-in Extras** (`LrLibraryMenuItems`) | the 4 real commands + 3 SDK self-tests |
+| **File > Plug-in Extras** (`LrExportMenuItems`) | the 2 real commands |
+| **Library > Plug-in Extras** (`LrLibraryMenuItems`) | the 2 real commands + 3 SDK self-tests |
 
-- `ColorFM-LR：处理当前照片…` — process the selected photo (`MenuProcess.lua`)
-- `ColorFM-LR：继续未完成会话…` — resume an unfinished session (`MenuResume.lua`)
-- `ColorFM-LR：检查引擎状态` — engine status (`MenuStatus.lua`)
-- `ColorFM-LR：设置桌面应用路径…` — point at the app (`MenuSetApp.lua`, stored as `colorfmAppPath` in `LrPrefs`)
+- Process Current Photo… — process the selected photo (`MenuProcess.lua`)
+- Engine Status — engine status (`MenuStatus.lua`)
+
+The titles are ZStrings (`LOC "$$$/ColorFM/MenuProcess=Process Current Photo…"`), with
+Chinese supplied by `TranslatedStrings_zh.txt`. They follow **Lightroom's own UI language**,
+not the system locale — and the dictionary is read at plug-in load, so restart Lightroom
+after editing it.
+
+Dialogs and progress captions take the other route: two tables in `Strings.lua`
+(ENGLISH / CHINESE) read through `Strings.t("key", ...)`, chosen by
+`LrLocalization.currentLanguage()` and keeping `string.format`'s `%s` / `%d`.
+`host-contract.test.ts` pins the two tables together, so a missing translation fails the build.
 
 ## Files
 
 | File | Responsibility |
 |---|---|
-| `Info.lua` | Plug-in metadata, both menus, runtime version |
+| `Info.lua` | Plug-in metadata, both menus (titles are ZStrings), runtime version |
+| `Strings.lua` | Every dialog and progress caption, in English or Chinese depending on `LrLocalization.currentLanguage()` |
 | `Session.lua` | Main flow: export → create session → wait → import the result |
 | `Exporter.lua` | Fixed export settings (16-bit, sRGB, no compression, no sharpening, no preset inheritance) |
 | `EngineClient.lua` | Engine discovery (`engine.json`), HTTP, `LrPrefs`, launching the app |

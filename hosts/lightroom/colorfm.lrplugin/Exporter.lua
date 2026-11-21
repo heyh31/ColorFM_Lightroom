@@ -11,6 +11,8 @@ local LrExportSession = import "LrExportSession"
 local LrFileUtils = import "LrFileUtils"
 local LrPathUtils = import "LrPathUtils"
 
+local Strings = require "Strings"
+
 local Exporter = {}
 
 --- ~/Documents/ColorFM-LR/lightroom
@@ -40,7 +42,7 @@ end
 local function ensureDirectory(path)
     local ok, reason = LrFileUtils.createAllDirectories(path)
     if not ok then
-        return nil, "无法创建导出目录: " .. tostring(reason or path)
+        return nil, Strings.t("mkdir_failed", tostring(reason or path))
     end
     return true
 end
@@ -81,11 +83,11 @@ function Exporter.exportBase(photo, progressScope)
     end
 
     if not exportedPath then
-        return nil, "TIFF 导出失败: " .. tostring(failure or "Lightroom 没有返回文件")
+        return nil, Strings.t("export_failed", tostring(failure or Strings.t("lr_no_file")))
     end
 
     if LrFileUtils.exists(exportedPath) ~= "file" then
-        return nil, "导出文件不存在: " .. tostring(exportedPath)
+        return nil, Strings.t("export_missing", tostring(exportedPath))
     end
 
     return {

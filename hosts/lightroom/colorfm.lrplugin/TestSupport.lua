@@ -7,6 +7,8 @@ local LrLogger = import "LrLogger"
 local LrPathUtils = import "LrPathUtils"
 local LrProgressScope = import "LrProgressScope"
 
+local Strings = require "Strings"
+
 local logger = LrLogger("ColorFM_Lightroom_Test")
 logger:enable("logfile")
 
@@ -24,7 +26,7 @@ end
 local function ensureDirectory(path)
     local ok, reason = LrFileUtils.createAllDirectories(path)
     if not ok then
-        fail("无法创建测试目录: " .. tostring(reason or path))
+        fail(Strings.t("test_mkdir_failed", tostring(reason or path)))
     end
 end
 
@@ -33,15 +35,15 @@ local function targetPhoto()
     local photo = catalog:getTargetPhoto()
 
     if not photo then
-        fail("请先在 Lightroom 中选择一张照片。")
+        fail(Strings.t("select_photo_first"))
     end
 
     if photo:getRawMetadata("isVideo") then
-        fail("ColorFM 导出测试只支持静态照片。")
+        fail(Strings.t("test_photos_only"))
     end
 
     if not photo:checkPhotoAvailability() then
-        fail("当前照片的文件不可用或已移动。")
+        fail(Strings.t("file_missing"))
     end
 
     return catalog, photo
@@ -95,7 +97,7 @@ function TestSupport.exportCurrentPhoto()
     local failures = {}
     local total = session:countRenditions()
     local progress = LrProgressScope {
-        title = "ColorFM 测试:导出 TIFF",
+        title = Strings.t("test_export_scope"),
     }
 
     for index, rendition in session:renditions { stopIfCanceled = true } do
@@ -117,8 +119,8 @@ function TestSupport.exportCurrentPhoto()
     if #exportedPaths == 0 then
         local detail = #failures > 0
             and table.concat(failures, "\n")
-            or "Lightroom 未返回导出文件路径。"
-        fail("TIFF 导出失败。\n" .. detail)
+            or Strings.t("test_no_path")
+        fail(Strings.t("test_export_failed", detail))
     end
 
     return {
@@ -149,7 +151,7 @@ function TestSupport.importPaths(paths, stackWithPhoto)
     local imported = {}
     if #pending > 0 then
         catalog:withWriteAccessDo(
-            "ColorFM 测试:导入新照片",
+            Strings.t("test_import_title"),
             function()
                 for _, path in ipairs(pending) do
                     local photo
@@ -174,8 +176,8 @@ end
 
 function TestSupport.chooseTiffFiles()
     return LrDialogs.runOpenPanel {
-        title = "选择要导入的 ColorFM/测试 TIFF",
-        prompt = "选择一张或多张 TIFF",
+        title = Strings.t("test_pick_title"),
+        prompt = Strings.t("test_pick_prompt"),
         canChooseFiles = true,
         canChooseDirectories = false,
         allowsMultipleSelection = true,
@@ -187,11 +189,11 @@ function TestSupport.describeImportResult(result)
     local lines = {}
 
     if #result.imported > 0 then
-        lines[#lines + 1] = string.format("新建并导入 %d 张照片。", #result.imported)
+        lines[#lines + 1] = Strings.t("test_imported_n", #result.imported)
     end
 
     if #result.existing > 0 then
-        lines[#lines + 1] = string.format("已存在 %d 张，未重复导入。", #result.existing)
+        lines[#lines + 1] = Strings.t("test_existing_n", #result.existing)
     end
 
     return table.concat(lines, "\n")

@@ -17,15 +17,13 @@ and it is easy to look in the wrong place:
 
 | Where | What appears |
 |---|---|
-| **文件 > 增效工具额外信息**<br>(`LrExportMenuItems`) | 4 条正式命令 |
-| **图库 > 增效工具额外功能**<br>(`LrLibraryMenuItems`) | 4 条正式命令 + 3 条 SDK 测试 |
+| **文件 > 增效工具额外信息**<br>(`LrExportMenuItems`) | 2 commands |
+| **图库 > 增效工具额外功能**<br>(`LrLibraryMenuItems`) | 2 commands + 3 SDK probes |
 
 ```text
 文件 > 增效工具额外信息 >
-  ColorFM：处理当前照片…
-  ColorFM：继续未完成会话…
-  ColorFM：检查引擎状态
-  ColorFM：设置桌面应用路径…
+  ColorFM-LR：处理当前照片…
+  ColorFM-LR：检查引擎状态
 ```
 
 ```text
@@ -104,7 +102,8 @@ the file, so a restarted engine does not wedge the plug-in.
 
 Resolution order:
 
-1. `ColorFM：设置桌面应用路径…` (stored in Lightroom plug-in preferences)
+1. `colorfmAppPath` in the Lightroom plug-in preferences (written by the old
+   "set app path" menu item, still honoured)
 2. a source checkout: the plug-in walks up from its own location and looks for
    `apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app`, then
    `apps/desktop/src-tauri/target/release/colorfm-desktop`

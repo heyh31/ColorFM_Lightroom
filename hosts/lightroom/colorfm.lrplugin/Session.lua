@@ -15,27 +15,29 @@ local LrTasks = import "LrTasks"
 
 local EngineClient = require "EngineClient"
 local Exporter = require "Exporter"
+local Strings = require "Strings"
 
 local Session = {}
 
 local WAIT_POLLS = 60 * 30
 local POLL_SECONDS = 1
 
-local STATE_TEXT = {
-    created = "已创建",
-    waiting_for_ui = "等待桌面应用",
-    waiting_for_reference = "请选择参考图",
-    previewing = "正在生成预览",
-    ready = "等待确认",
-    rendering = "正在写回",
-    ready_to_import = "可以导入",
-    imported = "已导入",
-    canceled = "已取消",
-    error = "出错",
+local STATE_KEYS = {
+    created = "state_created",
+    waiting_for_ui = "state_waiting_for_ui",
+    waiting_for_reference = "state_waiting_for_reference",
+    previewing = "state_previewing",
+    ready = "state_ready",
+    rendering = "state_rendering",
+    ready_to_import = "state_ready_to_import",
+    imported = "state_imported",
+    canceled = "state_canceled",
+    error = "state_error",
 }
 
 function Session.stateText(state)
-    return STATE_TEXT[state] or tostring(state)
+    local key = STATE_KEYS[state]
+    return key and Strings.t(key) or tostring(state)
 end
 
 local function fail(message)
@@ -47,13 +49,13 @@ local function targetPhoto()
     local photo = catalog:getTargetPhoto()
 
     if not photo then
-        fail("请先在 Lightroom 中选择一张照片。")
+        fail(Strings.t("select_photo_first"))
     end
     if photo:getRawMetadata("isVideo") then
-        fail("ColorFM 只处理静态照片。")
+        fail(Strings.t("photos_only"))
     end
     if not photo:checkPhotoAvailability() then
-        fail("当前照片的文件不可用或已移动。")
+        fail(Strings.t("file_missing"))
     end
 
     return catalog, photo
@@ -67,7 +69,7 @@ local function waitForWorkflow(info, sessionId, scope)
     for _ = 1, WAIT_POLLS do
         if scope and scope:isCanceled() then
             EngineClient.cancel(info, sessionId)
-            return "canceled", nil, "已在 Lightroom 中取消"
+            return "canceled", nil, Strings.t("canceled_in_lr")
         end
 
         local snapshot, snapshotError = EngineClient.getSession(info, sessionId)
@@ -76,7 +78,7 @@ local function waitForWorkflow(info, sessionId, scope)
         end
 
         if scope then
-            scope:setCaption("状态：" .. Session.stateText(snapshot.state))
+            scope:setCaption(Strings.t("status_caption", Session.stateText(snapshot.state)))
         end
 
         if snapshot.state == "ready_to_import" then
@@ -86,16 +88,16 @@ local function waitForWorkflow(info, sessionId, scope)
             return "imported", snapshot.resultPath, nil
         end
         if snapshot.state == "error" then
-            return "error", nil, snapshot.errorCode or "引擎返回错误"
+            return "error", nil, snapshot.errorCode or Strings.t("engine_error")
         end
         if snapshot.state == "canceled" then
-            return "canceled", nil, "会话已取消"
+            return "canceled", nil, Strings.t("session_canceled")
         end
 
         LrTasks.sleep(POLL_SECONDS)
     end
 
-    return "timeout", nil, "等待超时（30 分钟）。会话仍保留在桌面应用中，可以稍后继续。"
+    return "timeout", nil, Strings.t("timeout")
 end
 
 --- Adds the result as a new catalogue photo, stacked below the original.
@@ -110,14 +112,14 @@ end
 --- Provenance lives in the engine's session record instead (v0.md §11).
 local function importResult(info, sessionId, resultPath, originalPhoto)
     if not resultPath then
-        return nil, "引擎没有返回结果路径"
+        return nil, Strings.t("no_result_path")
     end
 
     local catalog = LrApplication.activeCatalog()
     local imported
 
     catalog:withWriteAccessDo(
-        "ColorFM：导入结果 TIFF",
+        Strings.t("import_title"),
         function()
             local existing = catalog:findPhotoByPath(resultPath)
             if existing then
@@ -138,7 +140,7 @@ local function importResult(info, sessionId, resultPath, originalPhoto)
     )
 
     if not imported then
-        return nil, "Lightroom 未能把结果加入目录: " .. tostring(resultPath)
+        return nil, Strings.t("import_failed", tostring(resultPath))
     end
 
     EngineClient.markImported(info, sessionId)
@@ -174,7 +176,7 @@ local function resultPathNextToSource(sourcePath, photoName)
 end
 
 local function reportFailure(message)
-    fail("ColorFM 处理失败：\n\n" .. tostring(message))
+    fail(Strings.t("process_failed", tostring(message)))
 end
 
 --- File > Plug-in Extras > ColorFM：处理当前照片…
@@ -183,7 +185,7 @@ function Session.processCurrentPhoto()
     local sourcePath = photo:getRawMetadata("path")
     local photoName = photo:getFormattedMetadata("fileName")
 
-    local exportScope = LrProgressScope { title = "ColorFM：导出 16-bit sRGB TIFF" }
+    local exportScope = LrProgressScope { title = Strings.t("export_scope") }
     local exported, exportError = Exporter.exportBase(photo, exportScope)
     exportScope:done()
 
@@ -214,12 +216,12 @@ function Session.processCurrentPhoto()
     -- sees this session, and claims it.
     EngineClient.launchApp()
 
-    local scope = LrProgressScope { title = "ColorFM：在桌面应用中调整（可在此取消）" }
+    local scope = LrProgressScope { title = Strings.t("adjust_scope") }
     local state, resultPath, waitMessage = waitForWorkflow(info, sessionId, scope)
     scope:done()
 
     if state == "imported" then
-        LrDialogs.message("ColorFM", "这批结果已经导入过了。", "info")
+        LrDialogs.message("ColorFM", Strings.t("already_imported"), "info")
         return
     end
     if state ~= "ready_to_import" then
@@ -237,82 +239,8 @@ function Session.processCurrentPhoto()
     end
 
     LrDialogs.message(
-        "ColorFM：完成",
-        string.format(
-            "已作为新照片导入，并堆叠在原片下方。\n\n结果：\n%s\n\n原片没有被修改。",
-            tostring(resultPath)
-        ),
-        "info"
-    )
-    LrShell.revealInShell(resultPath)
-end
-
---- File > Plug-in Extras > ColorFM：继续未完成会话…
-function Session.resume()
-    local info, connectError = EngineClient.connect()
-    if not info then
-        reportFailure(connectError)
-    end
-
-    local sessions, listError = EngineClient.listSessions(info)
-    if not sessions then
-        reportFailure(listError)
-    end
-    if #sessions == 0 then
-        LrDialogs.message("ColorFM", "没有未完成的会话。", "info")
-        return
-    end
-
-    local target = sessions[1]
-    local snapshot = EngineClient.getSession(info, target.id)
-
-    -- LrDialogs.confirm takes positional arguments: (message, info, style).
-    local proceed = LrDialogs.confirm(
-        "继续这个未完成的会话吗？",
-        string.format(
-            "最近一个会话：\n%s\n状态：%s",
-            tostring(target.label or target.id),
-            Session.stateText(target.state)
-        ),
-        { actionVerb = "继续" }
-    )
-    if proceed ~= "ok" then
-        return
-    end
-
-    EngineClient.launchApp()
-
-    local scope = LrProgressScope { title = "ColorFM：等待桌面应用完成" }
-    local state, resultPath, waitMessage = waitForWorkflow(info, target.id, scope)
-    scope:done()
-
-    if state == "imported" then
-        LrDialogs.message("ColorFM", "这个会话的结果已经在目录中。", "info")
-        return
-    end
-    if state ~= "ready_to_import" then
-        reportFailure(waitMessage or state)
-    end
-
-    local catalog = LrApplication.activeCatalog()
-    local original
-    if snapshot and snapshot.rawPath then
-        original = catalog:findPhotoByPath(snapshot.rawPath)
-    end
-
-    local imported, importError = importResult(
-        info,
-        target.id,
-        resultPath,
-        original
-    )
-    if not imported then
-        reportFailure(importError)
-    end
-
-    LrDialogs.message(
-        "ColorFM：完成",
-        "已导入结果：\n" .. tostring(resultPath),
+        Strings.t("done_title"),
+        Strings.t("done_body", tostring(resultPath)),
         "info"
     )
     LrShell.revealInShell(resultPath)
@@ -325,12 +253,8 @@ function Session.diagnose()
 
     if not info then
         LrDialogs.message(
-            "ColorFM：引擎未运行",
-            string.format(
-                "%s\n\n发现文件：\n%s\n\n在 Lightroom 中执行「处理当前照片」会自动启动桌面应用。",
-                tostring(discoveryError),
-                tostring(path)
-            ),
+            Strings.t("engine_down_title"),
+            Strings.t("engine_down_body", tostring(discoveryError), tostring(path)),
             "warning"
         )
         return
@@ -339,60 +263,24 @@ function Session.diagnose()
     local body = EngineClient.request(info, "GET", "/v1/health")
     if not body then
         LrDialogs.message(
-            "ColorFM：引擎无响应",
-            string.format(
-                "发现文件存在，但 http://127.0.0.1:%d 没有响应。\n\n%s\n\n请退出 ColorFM 桌面应用后重试。",
-                info.port,
-                tostring(path)
-            ),
+            Strings.t("engine_dead_title"),
+            Strings.t("engine_dead_body", info.port, tostring(path)),
             "warning"
         )
         return
     end
 
     LrDialogs.message(
-        "ColorFM：引擎就绪",
-        string.format(
-            "地址：http://127.0.0.1:%d\n进程：%s\n版本：%s\n模型已加载：%s\n\n发现文件：\n%s",
+        Strings.t("engine_ready_title"),
+        Strings.t(
+            "engine_ready_body",
             info.port,
             tostring(info.pid),
             tostring(EngineClient.jsonString(body, "version")),
-            EngineClient.jsonBool(body, "model_loaded") and "是" or "否",
+            EngineClient.jsonBool(body, "model_loaded") and Strings.t("yes") or Strings.t("no"),
+            tostring(Strings.language()),
             tostring(path)
         ),
-        "info"
-    )
-end
-
---- File > Plug-in Extras > ColorFM：设置桌面应用路径…
-function Session.configureAppPath()
-    local props = { path = EngineClient.appPath() or "" }
-
-    local result = LrDialogs.presentModalDialog {
-        title = "ColorFM：桌面应用路径",
-        contents = {
-            {
-                title = "ColorFM-LR.app 的完整路径（留空则使用 /Applications 中的 ColorFM-LR）",
-                bind_to_object = props,
-                property = "path",
-            },
-        },
-        actionVerb = "保存",
-    }
-
-    if result ~= "ok" then
-        return
-    end
-
-    local prefs = EngineClient.prefs()
-    if not prefs then
-        fail("Lightroom 没有提供插件偏好设置接口，无法保存应用路径。\n请改用 /Applications 中的 ColorFM。")
-    end
-
-    prefs.colorfmAppPath = props.path
-    LrDialogs.message(
-        "ColorFM",
-        props.path == "" and "已恢复为默认路径。" or ("已保存：\n" .. props.path),
         "info"
     )
 end

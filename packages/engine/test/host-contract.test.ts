@@ -136,11 +136,101 @@ async function raw(method: string, path: string, body?: unknown): Promise<{ stat
 describe("Lightroom plug-in contract", () => {
   it("parses every plug-in file", async () => {
     const files = readdirSync(PLUGIN).filter((name) => name.endsWith(".lua"));
-    expect(files.length).toBeGreaterThan(10);
+    const info = readFileSync(join(PLUGIN, "Info.lua"), "utf8");
+
+    // A menu entry naming a file that was deleted is a plug-in that fails to load,
+    // so the two lists have to agree: every `file = "..."` must exist on disk.
+    const entries = [...info.matchAll(/file = "([^"]+\.lua)"/g)].map((match) => match[1]);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) expect(files, entry).toContain(entry);
+
     for (const name of files) {
       const source = readFileSync(join(PLUGIN, name), "utf8");
       // Lua 5.1 is what Lightroom embeds; luaparse targets exactly that.
       expect(() => luaparse.parse(source, { luaVersion: "5.1" }), name).not.toThrow();
+    }
+  });
+
+  it("keeps both string tables in step, and every key reachable", async () => {
+    const source = readFileSync(join(PLUGIN, "Strings.lua"), "utf8");
+    const ast = luaparse.parse(source, { luaVersion: "5.1" });
+
+    // Pull the two literal tables out of Strings.lua by name.
+    const tables: Record<string, Map<string, string>> = {};
+    for (const node of ast.body) {
+      if (node.type !== "LocalStatement" || node.init.length !== 1) continue;
+      const name = node.variables[0]?.name;
+      const init = node.init[0];
+      if (!name || init.type !== "TableConstructorExpression") continue;
+      const entries = new Map<string, string>();
+      for (const field of init.fields) {
+        if (field.type !== "TableKeyString") continue;
+        // luaparse leaves `value` null in the default encoding mode; `raw` keeps
+        // the source text (quotes included), which is all the placeholder check
+        // needs.
+        entries.set(field.key.name, field.value.type === "StringLiteral" ? (field.value.raw ?? "") : "");
+      }
+      tables[name] = entries;
+    }
+
+    const english = tables.ENGLISH;
+    const chinese = tables.CHINESE;
+    expect(english, "ENGLISH table").toBeDefined();
+    expect(chinese, "CHINESE table").toBeDefined();
+
+    // A missing translation falls back to English, which is silent — catch it here.
+    expect([...chinese.keys()].sort()).toEqual([...english.keys()].sort());
+
+    // string.format throws when the argument count does not match, and the two
+    // languages must therefore use the same placeholders.
+    const placeholders = (text: string) => (text.match(/%[sd]/g) ?? []).join(",");
+    for (const [key, text] of english) {
+      expect(placeholders(chinese.get(key) ?? ""), key).toBe(placeholders(text));
+    }
+
+    // Every Strings.t("key") in the plug-in has to name a key that exists.
+    for (const file of readdirSync(PLUGIN).filter((name) => name.endsWith(".lua"))) {
+      const body = readFileSync(join(PLUGIN, file), "utf8");
+      for (const match of body.matchAll(/Strings\.t\("([^"]+)"/g)) {
+        expect(english.has(match[1]), `${file}: ${match[1]}`).toBe(true);
+      }
+    }
+  });
+
+  it("only calls module functions that are actually defined", async () => {
+    // A module whose file got clobbered still parses, so syntax is not enough:
+    // the call sites would fail at run time with "attempt to call a nil value".
+    const modules = ["Session", "EngineClient", "Exporter", "TestSupport", "Strings"];
+    const sources = new Map(
+      readdirSync(PLUGIN)
+        .filter((name) => name.endsWith(".lua"))
+        .map((name) => [name, readFileSync(join(PLUGIN, name), "utf8")]),
+    );
+    // Comments mention paths like "Session.lua", which would otherwise look like
+    // a call to Session.lua; strip them before scanning for call sites.
+    const all = [...sources.values()].map((text) => text.replace(/--[^\n]*/g, "")).join("\n");
+
+    for (const module of modules) {
+      const definition = sources.get(`${module}.lua`);
+      expect(definition, `${module}.lua`).toBeDefined();
+
+      // Two ways a module exposes a function: `function Mod.x(...)` and
+      // `Mod.x = someLocal`.
+      const definitionPattern = new RegExp(
+        `function ${module}\\.([A-Za-z_0-9]+)\\s*\\(|${module}\\.([A-Za-z_0-9]+)\\s*=`,
+        "g",
+      );
+      const defined = new Set(
+        [...(definition ?? "").matchAll(definitionPattern)].map((match) => match[1] ?? match[2]),
+      );
+      expect(defined.size, `${module} exports`).toBeGreaterThan(0);
+
+      const called = new Set(
+        [...all.matchAll(new RegExp(`\\b${module}\\.([A-Za-z_0-9]+)\\b`, "g"))].map((m) => m[1]),
+      );
+      for (const name of called) {
+        expect(defined.has(name), `${module}.${name} is called but not defined`).toBe(true);
+      }
     }
   });
 

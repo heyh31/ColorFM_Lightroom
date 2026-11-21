@@ -16,6 +16,8 @@ local LrPathUtils = import "LrPathUtils"
 local LrPrefs = import "LrPrefs"
 local LrTasks = import "LrTasks"
 
+local Strings = require "Strings"
+
 local EngineClient = {}
 
 local TIMEOUT_SECONDS = 8
@@ -164,18 +166,18 @@ EngineClient.number = number
 function EngineClient.readDiscovery()
     local path = EngineClient.discoveryPath()
     if LrFileUtils.exists(path) ~= "file" then
-        return nil, "找不到引擎发现文件（引擎尚未启动）"
+        return nil, Strings.t("discovery_missing")
     end
 
     local text, readError = LrFileUtils.readFile(path)
     if not text then
-        return nil, "无法读取引擎发现文件: " .. tostring(readError)
+        return nil, Strings.t("discovery_unreadable", tostring(readError))
     end
 
     local port = EngineClient.jsonNumber(text, "http_port")
     local token = EngineClient.jsonString(text, "token")
     if not port or not token then
-        return nil, "引擎发现文件格式不正确"
+        return nil, Strings.t("discovery_malformed")
     end
 
     return {
@@ -209,7 +211,7 @@ local function httpCall(method, url, payload, requestHeaders)
     end
 
     if type(body) ~= "string" then
-        return nil, tostring(detail or "引擎没有响应")
+        return nil, tostring(detail or Strings.t("no_response"))
     end
     return body, nil
 end
@@ -218,7 +220,7 @@ end
 function EngineClient.request(info, method, path, payload)
     local body, transportError = httpCall(method, urlFor(info, path), payload, headers(info.token))
     if not body then
-        return nil, "无法连接引擎: " .. tostring(transportError)
+        return nil, Strings.t("transport_failed", tostring(transportError))
     end
 
     -- A stale token means a different engine instance owns the port now.
@@ -229,7 +231,7 @@ function EngineClient.request(info, method, path, payload)
             info.port = discovered.port
             body, transportError = httpCall(method, urlFor(info, path), payload, headers(info.token))
             if not body then
-                return nil, "无法连接引擎: " .. tostring(transportError)
+                return nil, Strings.t("transport_failed", tostring(transportError))
             end
         end
     end
@@ -349,11 +351,11 @@ function EngineClient.connect()
 
     if not EngineClient.launchApp() then
         return nil, table.concat({
-            "无法启动 ColorFM-LR 桌面应用。",
+            Strings.t("launch_failed_head"),
             "",
-            "・安装版：把 ColorFM-LR.app 放进 /Applications；",
-            "・源码目录：先构建一次 npm run tauri build -- --bundles app（插件会自动找到 apps/desktop/src-tauri/target/release/bundle/macos/ColorFM-LR.app）；",
-            "・也可以先手动打开桌面应用，再回到 Lightroom 重试（引擎在跑时不会尝试拉起）。",
+            Strings.t("launch_failed_installed"),
+            Strings.t("launch_failed_checkout"),
+            Strings.t("launch_failed_manual"),
         }, "\n")
     end
 
@@ -367,7 +369,7 @@ function EngineClient.connect()
         end
     end
 
-    return nil, "已启动桌面应用，但引擎在 20 秒内没有响应。请在应用中确认它正常打开后重试。"
+    return nil, Strings.t("launch_timeout")
 end
 
 -- --- session API ------------------------------------------------------------
@@ -399,12 +401,12 @@ function EngineClient.createSession(info, options)
         return nil, requestError
     end
     if not EngineClient.envelopeOk(body) then
-        return nil, "引擎拒绝了会话创建: " .. tostring(EngineClient.errorCode(body))
+        return nil, Strings.t("session_create_failed", tostring(EngineClient.errorCode(body)))
     end
 
     local id = EngineClient.jsonString(body, "id")
     if not id then
-        return nil, "引擎没有返回会话 ID"
+        return nil, Strings.t("session_no_id")
     end
     return id
 end
@@ -419,7 +421,7 @@ function EngineClient.getSession(info, sessionId)
         return nil, requestError
     end
     if not EngineClient.envelopeOk(body) then
-        return nil, "无法读取会话: " .. tostring(EngineClient.errorCode(body))
+        return nil, Strings.t("session_read_failed", tostring(EngineClient.errorCode(body)))
     end
     return {
         id = EngineClient.jsonString(body, "id"),
@@ -435,57 +437,6 @@ function EngineClient.getSession(info, sessionId)
     }
 end
 
---- Active sessions, newest first. Each entry is { id, state, label }.
-function EngineClient.listSessions(info)
-    local body, requestError = EngineClient.request(
-        info,
-        "GET",
-        "/v1/lightroom/sessions?active=1"
-    )
-    if not body then
-        return nil, requestError
-    end
-    if not EngineClient.envelopeOk(body) then
-        return nil, "无法列出会话: " .. tostring(EngineClient.errorCode(body))
-    end
-
-    local sessions = {}
-    local init = 1
-    while true do
-        local first = body:find('"id":"', init, true)
-        if not first then
-            break
-        end
-        local idStart = first + #'"id":"'
-        local idEnd = body:find('"', idStart, true)
-        if not idEnd then
-            break
-        end
-        local id = body:sub(idStart, idEnd - 1)
-        local state, label
-        local stateFirst = body:find('"state":"', idEnd, true)
-        if stateFirst then
-            local stateStart = stateFirst + #'"state":"'
-            local stateEnd = body:find('"', stateStart, true)
-            if stateEnd then
-                state = body:sub(stateStart, stateEnd - 1)
-            end
-        end
-        local labelFirst = body:find('"label":"', idEnd, true)
-        if labelFirst then
-            local labelStart = labelFirst + #'"label":"'
-            local labelEnd = body:find('"', labelStart, true)
-            if labelEnd then
-                label = body:sub(labelStart, labelEnd - 1)
-            end
-        end
-        sessions[#sessions + 1] = { id = id, state = state, label = label }
-        init = idEnd + 1
-    end
-
-    return sessions
-end
-
 local function simplePost(info, sessionId, action)
     local body, requestError = EngineClient.request(
         info,
@@ -499,10 +450,6 @@ local function simplePost(info, sessionId, action)
         return nil, tostring(EngineClient.errorCode(body))
     end
     return EngineClient.jsonString(body, "state")
-end
-
-function EngineClient.claim(info, sessionId)
-    return simplePost(info, sessionId, "claim")
 end
 
 function EngineClient.cancel(info, sessionId)

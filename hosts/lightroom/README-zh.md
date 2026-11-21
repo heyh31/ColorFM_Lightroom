@@ -27,19 +27,26 @@ Lightroom Classic 侧的 Lua 插件（`colorfm.lrplugin`）。它负责三件事
 
 | 位置 | 内容 |
 |---|---|
-| **文件 > 增效工具额外信息**（`LrExportMenuItems`） | 4 条正式命令 |
-| **图库 > 增效工具额外功能**（`LrLibraryMenuItems`） | 4 条正式命令 + 3 条 SDK 自测 |
+| **文件 > 增效工具额外信息**（`LrExportMenuItems`） | 2 条正式命令 |
+| **图库 > 增效工具额外功能**（`LrLibraryMenuItems`） | 2 条正式命令 + 3 条 SDK 自测 |
 
-- `ColorFM-LR：处理当前照片…`（`MenuProcess.lua`）
-- `ColorFM-LR：继续未完成会话…`（`MenuResume.lua`）
-- `ColorFM-LR：检查引擎状态`（`MenuStatus.lua`）
-- `ColorFM-LR：设置桌面应用路径…`（`MenuSetApp.lua`，结果存 `LrPrefs` 的 `colorfmAppPath`）
+- `处理当前照片…`（`MenuProcess.lua`）
+- `检查引擎状态`（`MenuStatus.lua`）
+
+标题是 ZString（`LOC "$$$/ColorFM/MenuProcess=Process Current Photo…"`），
+由 `TranslatedStrings_zh.txt` 提供中文。**Lightroom 界面是英文就显示英文，是中文就显示中文**，
+不取决于系统语言——但词典只在插件加载时读取，改完要重启 Lightroom。
+
+对话框和进度条的文案走另一条路：`Strings.lua` 里两张表（ENGLISH / CHINESE），
+`Strings.t("key", ...)` 按 `LrLocalization.currentLanguage()` 取，保留 `string.format` 的
+`%s` / `%d`。两张表的键和占位符由 `host-contract.test.ts` 校验，漏翻会直接失败。
 
 ## 文件
 
 | 文件 | 职责 |
 |---|---|
-| `Info.lua` | 插件元数据、两套菜单、运行时版本声明 |
+| `Info.lua` | 插件元数据、两套菜单（标题是 ZString）、运行时版本声明 |
+| `Strings.lua` | 所有对话框与进度条文案，按 `LrLocalization.currentLanguage()` 选英/中 |
 | `Session.lua` | 主流程：导出 → 建会话 → 等待 → 导入结果 |
 | `Exporter.lua` | 固定的导出设置（16-bit、sRGB、无压缩、不锐化、不继承预设） |
 | `EngineClient.lua` | 引擎发现（读 `engine.json`）、HTTP、`LrPrefs`、启动桌面应用 |
